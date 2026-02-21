@@ -310,6 +310,85 @@ function ActivitiesTab({data,save}){
   </div>);
 }
 
+// ── PHOTOS ──
+function PhotosTab({data,save}){
+  const[showAdd,setShowAdd]=useState(false);
+  const albums=data.albums||[];
+  const mainAlbum=data.mainAlbumUrl||"";
+  const[na,setNa]=useState({title:"",url:""});
+  const[editMain,setEditMain]=useState(false);
+  const[mainUrl,setMainUrl]=useState(mainAlbum);
+
+  const doAddAlbum=()=>{if(!na.title.trim()||!na.url.trim())return;save({...data,albums:[...albums,{...na,id:Date.now()+""}]});setNa({title:"",url:""});setShowAdd(false)};
+  const doRmAlbum=id=>save({...data,albums:albums.filter(a=>a.id!==id)});
+  const saveMain=()=>{save({...data,mainAlbumUrl:mainUrl});setEditMain(false)};
+
+  return(<div style={{padding:"12px 20px"}}>
+    <div style={{fontFamily:"'Fraunces',serif",fontSize:20,fontWeight:700,marginBottom:16}}>Photos</div>
+
+    {/* Main shared album */}
+    <div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:16,marginBottom:14,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+        <div style={{width:40,height:40,borderRadius:12,background:"#FFF0EC",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>📸</div>
+        <div><div style={{fontSize:15,fontWeight:600}}>Shared Album</div><div style={{fontSize:12.5,color:"#9A958D"}}>One album for everyone to upload to</div></div>
+      </div>
+      {mainAlbum?(<div>
+        <a href={mainAlbum} target="_blank" rel="noopener" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"12px 18px",background:"#C84B31",color:"#fff",borderRadius:12,fontSize:14,fontWeight:600,textDecoration:"none",marginBottom:10}}>
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          Open Shared Album
+        </a>
+        <Btn ghost sm full onClick={()=>{setMainUrl(mainAlbum);setEditMain(true)}}>Edit Link</Btn>
+      </div>):(
+        <Btn primary full onClick={()=>{setMainUrl("");setEditMain(true)}}>
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add Shared Album Link
+        </Btn>
+      )}
+    </div>
+
+    {/* How-to tip */}
+    {!mainAlbum&&<div style={{background:"#FFF8E1",border:"1px solid #F5E6B8",borderRadius:16,padding:14,marginBottom:14}}>
+      <div style={{fontSize:13,fontWeight:600,marginBottom:4}}>💡 How to set up a shared album</div>
+      <div style={{fontSize:12.5,color:"#605C55",lineHeight:1.5}}>
+        1. Open Google Photos on your phone{"\n"}
+        2. Tap Library → New Album → name it{"\n"}
+        3. Tap Share → Copy link{"\n"}
+        4. Paste the link here!{"\n"}
+        Everyone can then open it and add their own photos.
+      </div>
+    </div>}
+
+    {/* Additional albums */}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,marginTop:8}}>
+      <div style={{fontSize:14,fontWeight:600}}>Additional Albums</div>
+      <Btn ghost sm onClick={()=>setShowAdd(true)}>{ic.plus} Add</Btn>
+    </div>
+
+    {albums.length===0?<div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:"28px 16px",textAlign:"center",color:"#9A958D",fontSize:13.5,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>No additional albums yet. Add albums for specific days, events, or vibes!</div>
+    :albums.map(a=>(<div key={a.id} style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:14,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.04)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <a href={a.url} target="_blank" rel="noopener" style={{flex:1,textDecoration:"none"}}>
+        <div style={{fontSize:14,fontWeight:600,color:"#17150F"}}>{a.title}</div>
+        <div style={{fontSize:12,color:"#C84B31",marginTop:2}}>Open album →</div>
+      </a>
+      <IconBtn danger onClick={()=>doRmAlbum(a.id)}>{ic.trash}</IconBtn>
+    </div>))}
+
+    {/* Edit main album modal */}
+    <Modal open={editMain} onClose={()=>setEditMain(false)} title="Shared Album Link">
+      <Input label="Google Photos Link" placeholder="https://photos.app.goo.gl/..." value={mainUrl} onChange={e=>setMainUrl(e.target.value)}/>
+      <p style={{fontSize:12.5,color:"#9A958D",marginBottom:14}}>Paste the share link from Google Photos. Everyone in the group can open this to view and add photos.</p>
+      <Btn primary full onClick={saveMain}>Save</Btn>
+    </Modal>
+
+    {/* Add album modal */}
+    <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="Add Album">
+      <Input label="Album Name" placeholder="e.g. Day 3 — Asakusa, Food Highlights" value={na.title} onChange={e=>setNa({...na,title:e.target.value})}/>
+      <Input label="Link" placeholder="https://photos.app.goo.gl/..." value={na.url} onChange={e=>setNa({...na,url:e.target.value})}/>
+      <Btn primary full onClick={doAddAlbum}>Add Album</Btn>
+    </Modal>
+  </div>);
+}
+
 // ── TRANSPORT ──
 function TransportTab(){
   const tips=[{t:"🚄 Shinkansen",d:"Tokyo → Osaka ~2.5hrs on Nozomi. Reserve seats in advance."},{t:"🚇 IC Cards (Suica/ICOCA)",d:"Get Suica at airport or JR station. Works on trains, buses, konbini."},{t:"📱 Google Maps",d:"Best transit nav for Japan. Download offline maps as backup."},{t:"🚕 Taxis",d:"Clean, safe, expensive. Doors open automatically!"},{t:"🚶 Walking",d:"Expect 15,000–25,000 steps/day. Comfy shoes are essential."}];
@@ -431,6 +510,7 @@ const moreItems=[
   {id:"hotels",label:"Hotels",desc:"Accommodation details",bg:"#E4F5EB",ic2:"#1A7A52",icon:<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21V7a2 2 0 012-2h14a2 2 0 012 2v14"/><path d="M9 21V13h6v8M3 21h18"/></svg>},
   {id:"flights",label:"Flights",desc:"Flight information",bg:"#E8F0FE",ic2:"#3D85C6",icon:<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>},
   {id:"activities",label:"Activities",desc:"Things to do",bg:"#FFF3E0",ic2:"#D4850A",icon:<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>},
+  {id:"photos",label:"Photos",desc:"Shared albums & memories",bg:"#FFF0EC",ic2:"#C84B31",icon:<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>},
   {id:"transport",label:"Transport",desc:"Getting around",bg:"#F0EAFF",ic2:"#7B4FC4",icon:<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="3" width="16" height="16" rx="2"/><path d="M4 11h16M12 3v8"/><circle cx="8" cy="15" r="1" fill="currentColor"/><circle cx="16" cy="15" r="1" fill="currentColor"/><path d="M8 19l-2 3M16 19l2 3"/></svg>},
   {id:"weather",label:"Weather",desc:"Forecasts & tips",bg:"#FFF8E1",ic2:"#C49000",icon:<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>},
   {id:"settings",label:"Settings",desc:"Trip details, members, data",bg:"#EDEBE6",ic2:"#605C55",icon:<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>},
@@ -469,6 +549,7 @@ export default function App(){
       case"hotels":return<HotelsTab data={data} save={save}/>;
       case"flights":return<FlightsTab data={data} save={save}/>;
       case"activities":return<ActivitiesTab data={data} save={save}/>;
+      case"photos":return<PhotosTab data={data} save={save}/>;
       case"transport":return<TransportTab/>;
       case"weather":return<WeatherTab/>;
       case"settings":return<SettingsTab data={data} save={save}/>;
