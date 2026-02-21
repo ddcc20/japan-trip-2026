@@ -23,10 +23,33 @@ const DATA_REF = ref(db, "tripData");
 export function subscribeToData(callback) {
   return onValue(DATA_REF, (snapshot) => {
     const val = snapshot.val();
-    if (val) callback(val);
+    if (val) {
+      // Firebase drops empty arrays — convert "__empty__" placeholders back
+      const revive = (obj) => {
+        if (obj === "__empty__") return [];
+        if (Array.isArray(obj)) return obj.map(revive);
+        if (obj && typeof obj === "object") {
+          const out = {};
+          for (const k in obj) out[k] = revive(obj[k]);
+          return out;
+        }
+        return obj;
+      };
+      callback(revive(val));
+    }
   });
 }
 
 export function saveData(data) {
-  return set(DATA_REF, data);
+  // Firebase deletes keys with empty arrays — replace with placeholder
+  const prep = (obj) => {
+    if (Array.isArray(obj)) return obj.length === 0 ? "__empty__" : obj.map(prep);
+    if (obj && typeof obj === "object") {
+      const out = {};
+      for (const k in obj) out[k] = prep(obj[k]);
+      return out;
+    }
+    return obj;
+  };
+  return set(DATA_REF, prep(data));
 }
