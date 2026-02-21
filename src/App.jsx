@@ -55,8 +55,12 @@ const INIT = {
     {id:"h2",city:"Osaka",name:"Cross Hotel Osaka",checkIn:"2026-03-13",checkOut:"2026-03-18",address:"2-5-15 Shinsaibashisuji, Chuo-ku",conf:"CRX-20260313-7193",notes:"Walking distance to Dotonbori."},
   ],
   flights:[
-    {id:"f1",label:"Departure",airline:"ANA",flightNo:"NH 7",from:"SFO",to:"NRT",date:"2026-03-07",time:"11:15 AM",conf:"ANA-8K2M4X"},
-    {id:"f2",label:"Return",airline:"ANA",flightNo:"NH 178",from:"KIX",to:"SFO",date:"2026-03-18",time:"2:30 PM",conf:"ANA-8K2M4X"},
+    {id:"f1",label:"Departure",airline:"ANA",flightNo:"NH 7",from:"SFO",to:"NRT",date:"2026-03-07",time:"11:15 AM",conf:"ANA-8K2M4X",member:"Alex"},
+    {id:"f2",label:"Return",airline:"ANA",flightNo:"NH 178",from:"KIX",to:"SFO",date:"2026-03-18",time:"2:30 PM",conf:"ANA-8K2M4X",member:"Alex"},
+    {id:"f3",label:"Departure",airline:"ANA",flightNo:"NH 7",from:"SFO",to:"NRT",date:"2026-03-07",time:"11:15 AM",conf:"ANA-7J3K9P",member:"Jordan"},
+    {id:"f4",label:"Return",airline:"ANA",flightNo:"NH 178",from:"KIX",to:"SFO",date:"2026-03-18",time:"2:30 PM",conf:"ANA-7J3K9P",member:"Jordan"},
+    {id:"f5",label:"Departure",airline:"United",flightNo:"UA 837",from:"LAX",to:"NRT",date:"2026-03-07",time:"1:40 PM",conf:"UA-5M2X8R",member:"Sam"},
+    {id:"f6",label:"Return",airline:"ANA",flightNo:"NH 178",from:"KIX",to:"LAX",date:"2026-03-18",time:"2:30 PM",conf:"UA-5M2X8R",member:"Sam"},
   ],
   expenses:[
     {id:"e1",description:"Shinkansen Tokyo to Osaka",amount:390,paidBy:"Alex",splitBetween:["Alex","Jordan","Sam"],category:"Transport"},
@@ -253,15 +257,22 @@ function HotelsTab({data,save}){
 
 // ── FLIGHTS ──
 function FlightsTab({data,save}){
+  const[tab,setTab]=useState(data.members[0]||"");
   const[showAdd,setShowAdd]=useState(false);
-  const[nf,setNf]=useState({label:"",airline:"",flightNo:"",from:"",to:"",date:"",time:"",conf:""});
+  const[nf,setNf]=useState({label:"",airline:"",flightNo:"",from:"",to:"",date:"",time:"",conf:"",member:data.members[0]||""});
   const upd=(id,f,v)=>save({...data,flights:data.flights.map(fl=>fl.id===id?{...fl,[f]:v}:fl)});
-  const doAdd=()=>{if(!nf.label.trim())return;save({...data,flights:[...data.flights,{...nf,id:Date.now()+""}]});setNf({label:"",airline:"",flightNo:"",from:"",to:"",date:"",time:"",conf:""});setShowAdd(false)};
+  const doAdd=()=>{if(!nf.label.trim())return;save({...data,flights:[...data.flights,{...nf,id:Date.now()+"",member:tab}]});setNf({label:"",airline:"",flightNo:"",from:"",to:"",date:"",time:"",conf:"",member:tab});setShowAdd(false)};
   const doRm=id=>save({...data,flights:data.flights.filter(f=>f.id!==id)});
+  const myFlights=(data.flights||[]).filter(f=>(f.member||"")===(tab||""));
+  const colors3=["#E4F5EB","#F0EAFF","#FFF0EC","#FFF3E0","#E8F0FE","#FFF8E1"];
+  const tc3=["#1A7A52","#7B4FC4","#C84B31","#D4850A","#3D85C6","#C49000"];
+  const Tab2=({id,idx})=><button onClick={()=>setTab(id)} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:20,fontSize:13,fontWeight:tab===id?600:500,border:"none",cursor:"pointer",fontFamily:"inherit",background:tab===id?"#17150F":"#EDEBE6",color:tab===id?"#fff":"#605C55"}}><div style={{width:22,height:22,borderRadius:11,background:tab===id?"rgba(255,255,255,.2)":colors3[idx%6],display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:tab===id?"#fff":tc3[idx%6]}}>{id.charAt(0)}</div>{id}</button>;
 
   return(<div style={{padding:"12px 20px"}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><div style={{fontFamily:"'Fraunces',serif",fontSize:20,fontWeight:700}}>Flights</div><Btn primary sm onClick={()=>setShowAdd(true)}>{ic.plus} Add</Btn></div>
-    {data.flights.map(f=>(<div key={f.id} style={{background:"#fff",borderRadius:16,border:"1px solid #DDD9D2",padding:16,marginBottom:12,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>
+    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>{data.members.map((m,i)=><Tab2 key={m} id={m} idx={i}/>)}</div>
+    {myFlights.length===0?<div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:"32px 16px",boxShadow:"0 1px 3px rgba(0,0,0,.04)",textAlign:"center",color:"#9A958D",fontSize:13.5}}>No flights added for {tab} yet.</div>
+    :myFlights.map(f=>(<div key={f.id} style={{background:"#fff",borderRadius:16,border:"1px solid #DDD9D2",padding:16,marginBottom:12,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}><div style={{fontSize:12,fontWeight:700,color:"#C84B31",textTransform:"uppercase",letterSpacing:.8}}>{f.label} — {fmtDate(f.date)}</div><IconBtn danger onClick={()=>doRm(f.id)} style={{width:28,height:28}}>{ic.trash}</IconBtn></div>
       <Input label="Label" placeholder="e.g. Departure" value={f.label} onChange={e=>upd(f.id,"label",e.target.value)}/>
       <div style={{display:"flex",gap:10}}><div style={{flex:1}}><Input label="Airline" value={f.airline} onChange={e=>upd(f.id,"airline",e.target.value)}/></div><div style={{flex:1}}><Input label="Flight #" value={f.flightNo} onChange={e=>upd(f.id,"flightNo",e.target.value)}/></div></div>
@@ -269,11 +280,13 @@ function FlightsTab({data,save}){
       <div style={{display:"flex",gap:10}}><div style={{flex:1}}><Input label="Date" type="date" value={f.date} onChange={e=>upd(f.id,"date",e.target.value)}/></div><div style={{flex:1}}><Input label="Time" value={f.time} onChange={e=>upd(f.id,"time",e.target.value)}/></div></div>
       <Input label="Confirmation" value={f.conf} onChange={e=>upd(f.id,"conf",e.target.value)}/>
     </div>))}
-    <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="Add Flight">
-      <Input label="Label" placeholder="e.g. Layover, Return" value={nf.label} onChange={e=>setNf({...nf,label:e.target.value})}/>
+    <Modal open={showAdd} onClose={()=>setShowAdd(false)} title={"Add Flight for "+tab}>
+      <Input label="Label" placeholder="e.g. Departure, Layover, Return" value={nf.label} onChange={e=>setNf({...nf,label:e.target.value})}/>
       <div style={{display:"flex",gap:10}}><div style={{flex:1}}><Input label="Airline" value={nf.airline} onChange={e=>setNf({...nf,airline:e.target.value})}/></div><div style={{flex:1}}><Input label="Flight #" value={nf.flightNo} onChange={e=>setNf({...nf,flightNo:e.target.value})}/></div></div>
       <div style={{display:"flex",gap:10}}><div style={{flex:1}}><Input label="From" value={nf.from} onChange={e=>setNf({...nf,from:e.target.value})}/></div><div style={{flex:1}}><Input label="To" value={nf.to} onChange={e=>setNf({...nf,to:e.target.value})}/></div></div>
       <Input label="Date" type="date" value={nf.date} onChange={e=>setNf({...nf,date:e.target.value})}/>
+      <Input label="Time" placeholder="e.g. 11:15 AM" value={nf.time} onChange={e=>setNf({...nf,time:e.target.value})}/>
+      <Input label="Confirmation #" placeholder="Optional" value={nf.conf} onChange={e=>setNf({...nf,conf:e.target.value})}/>
       <Btn primary full onClick={doAdd}>Add Flight</Btn>
     </Modal>
   </div>);
