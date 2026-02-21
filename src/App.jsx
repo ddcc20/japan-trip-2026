@@ -437,9 +437,10 @@ export default function App(){
   const[sub,setSub]=useState(null);
   const[loaded,setLoaded]=useState(false);
 
-  useEffect(()=>{const unsub=subscribeToData(val=>{setData({...INIT,...val});setLoaded(true)});const t=setTimeout(()=>{if(!loaded){saveData(INIT);setLoaded(true)}},3000);return()=>{unsub();clearTimeout(t)}},[]);
+  const loadedRef=useRef(false);
+  useEffect(()=>{const unsub=subscribeToData(val=>{if(val){const safe={...val,expenses:val.expenses||[],restaurants:val.restaurants||[],quickEats:val.quickEats||[],activities:val.activities||[],hotels:val.hotels||[],flights:val.flights||[],members:val.members||["Member 1"],cities:val.cities||["Tokyo","Osaka"],itinerary:(val.itinerary||[]).map(d=>({...d,activities:d.activities||[]}))};setData(safe);loadedRef.current=true;setLoaded(true)}});const t=setTimeout(()=>{if(!loadedRef.current){saveData(INIT);setData(INIT);loadedRef.current=true;setLoaded(true)}},4000);return()=>{unsub();clearTimeout(t)}},[]);
 
-  const save=nd=>{setData(nd);saveData(nd)};
+  const save=nd=>{const cleaned={...nd,expenses:nd.expenses||[],restaurants:nd.restaurants||[],quickEats:nd.quickEats||[],activities:nd.activities||[],hotels:nd.hotels||[],flights:nd.flights||[],itinerary:(nd.itinerary||[]).map(d=>({...d,activities:d.activities||[]}))};setData(cleaned);saveData(cleaned)};
   const active=sub||tab;
 
   // Dynamic header info
