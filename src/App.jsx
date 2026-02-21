@@ -126,7 +126,21 @@ const ic={
 
 // ── ITINERARY ──
 function ItineraryTab({data,save}){
-  const[exp,setExp]=useState(0);const[showAdd,setShowAdd]=useState(false);const[addDay,setAddDay]=useState(null);const[na,setNa]=useState({time:"",text:""});
+  const today=new Date();today.setHours(0,0,0,0);
+  const todayIdx=data.itinerary.findIndex(d=>d.isoDate&&new Date(d.isoDate+"T00:00:00").getTime()===today.getTime());
+  const[exp,setExp]=useState(todayIdx>=0?todayIdx:0);
+  const[showAdd,setShowAdd]=useState(false);const[addDay,setAddDay]=useState(null);const[na,setNa]=useState({time:"",text:""});
+  const todayRef=useRef(null);
+  const scrolledRef=useRef(false);
+
+  // Auto-scroll to today's card on mount
+  useEffect(()=>{
+    if(todayIdx>=0&&todayRef.current&&!scrolledRef.current){
+      setTimeout(()=>{todayRef.current.scrollIntoView({behavior:"smooth",block:"start"})},300);
+      scrolledRef.current=true;
+    }
+  },[todayIdx]);
+
   const doAdd=()=>{if(!na.text.trim())return;const u=[...data.itinerary];u[addDay]={...u[addDay],activities:[...u[addDay].activities,{...na,id:Date.now()+""}]};save({...data,itinerary:u});setNa({time:"",text:""});setShowAdd(false)};
   const doRm=(di,aid)=>{const u=[...data.itinerary];u[di]={...u[di],activities:u[di].activities.filter(a=>a.id!==aid)};save({...data,itinerary:u})};
   const uniqueCities=[...new Set(data.itinerary.map(d=>d.city).filter(c=>c&&c!=="TBD"))];
@@ -138,11 +152,14 @@ function ItineraryTab({data,save}){
     </div>
     {data.itinerary.map((day,i)=>{
       const open=exp===i;const acts=[...day.activities].sort((a,b)=>(a.time||"").localeCompare(b.time||""));const[bg,fg]=getCityColor(day.city);
-      return(<div key={i} style={{background:"#fff",borderRadius:16,border:"1px solid #DDD9D2",boxShadow:"0 1px 3px rgba(0,0,0,.04)",marginBottom:12,overflow:"hidden"}}>
+      const dayDate=day.isoDate?new Date(day.isoDate+"T00:00:00"):null;
+      const isPast=dayDate&&dayDate<today;
+      const isToday=dayDate&&dayDate.getTime()===today.getTime();
+      return(<div key={i} ref={isToday?todayRef:null} style={{background:isPast?"#F9F8F6":"#fff",borderRadius:16,border:isToday?"2px solid #C84B31":"1px solid #DDD9D2",boxShadow:isToday?"0 2px 8px rgba(200,75,49,.15)":"0 1px 3px rgba(0,0,0,.04)",marginBottom:12,overflow:"hidden",opacity:isPast?.65:1,transition:"opacity .3s"}}>
         <div onClick={()=>setExp(open?-1:i)} style={{padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
           <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <div style={{width:44,height:44,borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:16,fontFamily:"'Fraunces',serif",background:bg,color:fg}}>{day.day}</div>
-            <div><div style={{fontSize:14.5,fontWeight:600}}>{day.date}</div><div style={{fontSize:12,color:"#9A958D",display:"flex",alignItems:"center",gap:4}}>{ic.pin} {day.city}{acts.length>0&&<span style={{marginLeft:4}}>· {acts.length} plans</span>}</div></div>
+            <div style={{width:44,height:44,borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:16,fontFamily:"'Fraunces',serif",background:isToday?"#C84B31":bg,color:isToday?"#fff":fg}}>{day.day}</div>
+            <div><div style={{fontSize:14.5,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>{day.date}{isToday&&<span style={{fontSize:10.5,fontWeight:700,color:"#C84B31",background:"#FFF0EC",padding:"2px 8px",borderRadius:10,textTransform:"uppercase",letterSpacing:.5}}>Today</span>}{isPast&&<span style={{fontSize:10.5,fontWeight:600,color:"#9A958D",background:"#EDEBE6",padding:"2px 8px",borderRadius:10}}>Done</span>}</div><div style={{fontSize:12,color:"#9A958D",display:"flex",alignItems:"center",gap:4}}>{ic.pin} {day.city}{acts.length>0&&<span style={{marginLeft:4}}>· {acts.length} plans</span>}</div></div>
           </div>
           <div style={{color:"#9A958D",transform:open?"rotate(90deg)":"none",transition:"transform .2s"}}>{ic.chev}</div>
         </div>
