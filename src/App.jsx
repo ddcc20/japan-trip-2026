@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import { subscribeToData, saveData } from "./firebase.js";
 
 // ── AI CONFIG ──
-// Replace with your real Anthropic API key
 const CLAUDE_API_KEY = import.meta.env.VITE_CLAUDE_API_KEY || "";
 async function askClaude(systemPrompt, userMessage) {
   try {
@@ -173,7 +172,7 @@ function ItineraryTab({data,save}){
   const todayIdx=data.itinerary.findIndex(d=>d.isoDate&&new Date(d.isoDate+"T00:00:00").getTime()===today.getTime());
   const[exp,setExp]=useState(todayIdx>=0?todayIdx:0);
   const[showAdd,setShowAdd]=useState(false);const[addDay,setAddDay]=useState(null);
-  const[na,setNa]=useState({time:"",text:"",location:""});
+  const[na,setNa]=useState({time:"",endTime:"",text:"",location:""});
   const[editAct,setEditAct]=useState(null);// {dayIdx, activity}
   const todayRef=useRef(null);
   const scrolledRef=useRef(false);
@@ -186,9 +185,10 @@ function ItineraryTab({data,save}){
   },[todayIdx]);
 
   const mapsUrl=(loc)=>loc?"https://www.google.com/maps/search/"+encodeURIComponent(loc):"";
-  const doAdd=()=>{if(!na.text.trim())return;const u=[...data.itinerary];u[addDay]={...u[addDay],activities:[...u[addDay].activities,{...na,id:Date.now()+"",mapsLink:mapsUrl(na.location)}]};save({...data,itinerary:u});setNa({time:"",text:"",location:""});setShowAdd(false)};
+  const doAdd=()=>{if(!na.text.trim())return;const u=[...data.itinerary];u[addDay]={...u[addDay],activities:[...u[addDay].activities,{...na,id:Date.now()+"",mapsLink:mapsUrl(na.location)}]};save({...data,itinerary:u});setNa({time:"",endTime:"",text:"",location:""});setShowAdd(false)};
   const doRm=(di,aid)=>{const u=[...data.itinerary];u[di]={...u[di],activities:u[di].activities.filter(a=>a.id!==aid)};save({...data,itinerary:u})};
   const doEdit=()=>{if(!editAct)return;const u=[...data.itinerary];const di=editAct.dayIdx;u[di]={...u[di],activities:u[di].activities.map(a=>a.id===editAct.id?{...editAct,mapsLink:mapsUrl(editAct.location)}:a)};save({...data,itinerary:u});setEditAct(null)};
+  const addBreak=(dayIdx)=>{const u=[...data.itinerary];u[dayIdx]={...u[dayIdx],activities:[...u[dayIdx].activities,{id:Date.now()+"",text:"🏠 Break at Airbnb",time:"",endTime:"",location:""}]};save({...data,itinerary:u})};
   const uniqueCities=[...new Set(data.itinerary.map(d=>d.city).filter(c=>c&&c!=="TBD"))];
 
   return(<div style={{padding:"12px 20px"}}>
@@ -214,7 +214,7 @@ function ItineraryTab({data,save}){
             <div style={{position:"absolute",left:4,top:6,bottom:6,width:1.5,background:"#DDD9D2"}}/>
             {acts.map((a,j)=>(<div key={a.id} style={{position:"relative",padding:"6px 0",display:"flex",gap:10,alignItems:"flex-start"}}>
               <div style={{position:"absolute",left:-20,top:11,width:9,height:9,borderRadius:"50%",background:j===0?"#C84B31":"#E0A090",border:"2px solid #fff",zIndex:1}}/>
-              <div style={{fontSize:11.5,fontWeight:600,color:"#9A958D",minWidth:52,paddingTop:1}}>{a.time?fmtTime(a.time):"—"}</div>
+              <div style={{fontSize:11.5,fontWeight:600,color:"#9A958D",minWidth:52,paddingTop:1}}>{a.time?fmtTime(a.time):"—"}{a.time&&a.endTime?<div style={{fontSize:10,fontWeight:400,color:"#B0ADA6"}}>to {fmtTime(a.endTime)}</div>:null}</div>
               <div style={{flex:1}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <div style={{fontSize:13.5,lineHeight:1.4}}>{a.text}</div>
@@ -233,7 +233,10 @@ function ItineraryTab({data,save}){
               </div>
             </div>))}
           </div>):<div style={{fontSize:13,color:"#9A958D",padding:"8px 0"}}>No plans yet.</div>}
-          <Btn ghost sm full onClick={()=>{setAddDay(i);setShowAdd(true)}} style={{marginTop:10}}>{ic.plus} Add Activity</Btn>
+          <div style={{display:"flex",gap:8,marginTop:10}}>
+            <Btn ghost sm style={{flex:1}} onClick={()=>{setAddDay(i);setShowAdd(true)}}>{ic.plus} Add Activity</Btn>
+            <Btn ghost sm onClick={()=>addBreak(i)} style={{color:"#7B4FC4",background:"#F0EAFF"}}>🏠 Break</Btn>
+          </div>
         </div>}
       </div>);
     })}
@@ -241,14 +244,20 @@ function ItineraryTab({data,save}){
       <Input label="Activity" placeholder="e.g. Visit Meiji Shrine" value={na.text} onChange={e=>setNa({...na,text:e.target.value})}/>
       <Input label="Location (optional)" placeholder="e.g. Senso-ji Temple, Tokyo" value={na.location} onChange={e=>setNa({...na,location:e.target.value})}/>
       {na.location&&<p style={{fontSize:12,color:"#9A958D",marginTop:-8,marginBottom:14}}>📍 Will create a Google Maps link for "{na.location}"</p>}
-      <Input label="Time (optional)" type="time" value={na.time} onChange={e=>setNa({...na,time:e.target.value})}/>
+      <div style={{display:"flex",gap:10}}>
+        <div style={{flex:1}}><Input label="Start Time (optional)" type="time" value={na.time} onChange={e=>setNa({...na,time:e.target.value})}/></div>
+        <div style={{flex:1}}><Input label="End Time (optional)" type="time" value={na.endTime} onChange={e=>setNa({...na,endTime:e.target.value})}/></div>
+      </div>
       <Btn primary full onClick={doAdd}>Add Activity</Btn>
     </Modal>
     <Modal open={!!editAct} onClose={()=>setEditAct(null)} title="Edit Activity">
       {editAct&&<><Input label="Activity" value={editAct.text} onChange={e=>setEditAct({...editAct,text:e.target.value})}/>
       <Input label="Location (optional)" placeholder="e.g. Senso-ji Temple, Tokyo" value={editAct.location||""} onChange={e=>setEditAct({...editAct,location:e.target.value})}/>
       {editAct.location&&<p style={{fontSize:12,color:"#9A958D",marginTop:-8,marginBottom:14}}>📍 Opens in Google Maps: "{editAct.location}"</p>}
-      <Input label="Time (optional)" type="time" value={editAct.time||""} onChange={e=>setEditAct({...editAct,time:e.target.value})}/>
+      <div style={{display:"flex",gap:10}}>
+        <div style={{flex:1}}><Input label="Start Time (optional)" type="time" value={editAct.time||""} onChange={e=>setEditAct({...editAct,time:e.target.value})}/></div>
+        <div style={{flex:1}}><Input label="End Time (optional)" type="time" value={editAct.endTime||""} onChange={e=>setEditAct({...editAct,endTime:e.target.value})}/></div>
+      </div>
       <Btn primary full onClick={doEdit}>Save Changes</Btn></>}
     </Modal>
   </div>);
