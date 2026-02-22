@@ -1,6 +1,23 @@
 import { useState, useEffect, useRef } from "react";
 import { subscribeToData, saveData } from "./firebase.js";
 
+// ── AI CONFIG ──
+// Replace with your real Anthropic API key
+const CLAUDE_API_KEY = import.meta.env.VITE_CLAUDE_API_KEY || "";
+async function askClaude(systemPrompt, userMessage) {
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": CLAUDE_API_KEY, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1500, system: systemPrompt, messages: [{ role: "user", content: userMessage }] }),
+    });
+    const data = await res.json();
+    if (data.error) return { error: data.error.message };
+    const text = data.content?.map(b => b.text || "").join("\n") || "";
+    return { text };
+  } catch (e) { return { error: e.message }; }
+}
+
 const makeDays = (start, end, cityMap) => {
   const s = new Date(start + "T00:00:00");
   const e = new Date(end + "T00:00:00");
@@ -515,6 +532,194 @@ function PhotosTab({data,save}){
   </div>);
 }
 
+// ── AI ASSISTANT ──
+function AITab({data,save}){
+  const[mode,setMode]=useState("chat");// chat | food | activities | optimize | briefing
+  const[loading,setLoading]=useState(false);
+  const[result,setResult]=useState(null);
+  const[chatInput,setChatInput]=useState("");
+  const[chatHistory,setChatHistory]=useState([]);
+  const[suggestCity,setSuggestCity]=useState((data.cities||["Tokyo"])[0]);
+  const allCities=data.cities||["Tokyo"];
+
+  const tripContext=()=>{
+    const itin=data.itinerary.map(d=>`Day ${d.day} (${d.date}, ${d.city}): ${d.activities.length>0?d.activities.map(a=>`${a.time||"?"} ${a.text}`).join("; "):"no plans"}`).join("\n");
+    const foods=[...(data.restaurants||[]).map(r=>`Restaurant: ${r.name} (${r.cuisine||"?"}, ${r.city})`),...(data.quickEats||[]).map(r=>`Quick eat: ${r.name} (${r.city})`)].join("\n");
+    const acts=(data.activities||[]).map(a=>`Activity: ${a.name} (${a.city}, ~$${a.cost||0})`).join("\n");
+    return`Trip: ${data.tripName||"Japan Trip"}\nDates: ${data.startDate} to ${data.endDate}\nTravelers: ${data.members.join(", ")}\nCities: ${allCities.join(", ")}\n\nItinerary:\n${itin}\n\nSaved restaurants/food:\n${foods||"None"}\n\nSaved activities:\n${acts||"None"}`;
+  };
+
+  const doAI=async(sysPrompt,userMsg)=>{
+    setLoading(true);setResult(null);
+    const r=await askClaude(sysPrompt,userMsg);
+    setLoading(false);
+    if(r.error){setResult("❌ Error: "+r.error);return null}
+    setResult(r.text);return r.text;
+  };
+
+  const suggestFood=async()=>{
+    await doAI(
+      "You are a Japan food expert. Respond ONLY with a JSON array of 5 objects with fields: name, cuisine, area, priceRange, whyGo. No markdown, no backticks, just the JSON array.",
+      `Suggest 5 must-try restaurants or food spots in ${suggestCity}, Japan for a group of ${data.members.length} travelers visiting in March 2026. Consider what they already have saved:\n${(data.restaurants||[]).filter(r=>r.city===suggestCity).map(r=>r.name).join(", ")||"nothing yet"}\n\nGive unique suggestions they don't already have.`
+    );
+  };
+
+  const suggestActivities=async()=>{
+    await doAI(
+      "You are a Japan travel expert. Respond ONLY with a JSON array of 5 objects with fields: name, description, estimatedCost, duration, bestTimeOfDay. No markdown, no backticks, just the JSON array.",
+      `Suggest 5 activities in ${suggestCity}, Japan for ${data.members.length} travelers in March 2026. They already have:\n${(data.activities||[]).filter(a=>a.city===suggestCity).map(a=>a.name).join(", ")||"nothing yet"}\n\nSuggest things they haven't planned. Mix free and paid options.`
+    );
+  };
+
+  const optimizeItinerary=async()=>{
+    await doAI(
+      "You are a Japan travel logistics expert. Analyze this itinerary and suggest specific improvements. Be concise and actionable. Format your response with clear numbered suggestions. Focus on: geographic grouping (things near each other on the same day), time-of-day logic, balanced days, and practical tips.",
+      `Here is our current trip plan. Please analyze and suggest how to better organize it:\n\n${tripContext()}`
+    );
+  };
+
+  const dailyBriefing=async(dayIdx)=>{
+    const day=data.itinerary[dayIdx];
+    if(!day)return;
+    await doAI(
+      "You are a friendly, knowledgeable Japan travel concierge. Give a brief, practical daily briefing for this day of the trip. Include: summary of plans, walking/transit tips between locations, meal suggestions for gaps, weather expectations for March in this city, and any practical tips. Keep it conversational and concise — about 150 words.",
+      `Generate a daily briefing for:\n\nDay ${day.day} - ${day.date} in ${day.city}\nActivities: ${day.activities.length>0?day.activities.map(a=>`${a.time||"TBD"}: ${a.text}${a.location?" ("+a.location+")":""}`).join("\n"):"No plans yet"}\n\nOther context:\n${tripContext()}`
+    );
+  };
+
+  const doChat=async()=>{
+    if(!chatInput.trim())return;
+    const msg=chatInput.trim();setChatInput("");
+    const newHistory=[...chatHistory,{role:"user",text:msg}];
+    setChatHistory(newHistory);setLoading(true);setResult(null);
+    const sysPrompt=`You are a helpful Japan travel assistant for a group trip. Here is their trip context:\n\n${tripContext()}\n\nAnswer questions helpfully and concisely. If they ask for suggestions, be specific with names and locations.`;
+    const r=await askClaude(sysPrompt,newHistory.map(h=>`${h.role==="user"?"Human":"Assistant"}: ${h.text}`).join("\n")+"\n\nHuman: "+msg);
+    setLoading(false);
+    if(r.error){setChatHistory([...newHistory,{role:"ai",text:"❌ "+r.error}]);}
+    else{setChatHistory([...newHistory,{role:"ai",text:r.text}]);}
+  };
+
+  const addFoodFromSuggestion=(item)=>{
+    const newItem={id:Date.now()+"",name:item.name,cuisine:item.cuisine||"",city:suggestCity,location:item.area||"",notes:item.whyGo||item.priceRange||""};
+    save({...data,restaurants:[...data.restaurants,newItem]});
+  };
+
+  const addActivityFromSuggestion=(item)=>{
+    const newItem={id:Date.now()+"",name:item.name,city:suggestCity,cost:item.estimatedCost?String(item.estimatedCost).replace(/[^0-9]/g,""):"0",notes:item.description||""};
+    save({...data,activities:[...data.activities,newItem]});
+  };
+
+  const parseSuggestions=(text)=>{
+    try{const clean=text.replace(/```json\s*/g,"").replace(/```/g,"").trim();return JSON.parse(clean);}
+    catch(e){return null;}
+  };
+
+  const ModeBtn=({id,icon,label})=>(
+    <button onClick={()=>{setMode(id);setResult(null)}} style={{flex:1,padding:"10px 6px",borderRadius:14,border:mode===id?"2px solid #C84B31":"1.5px solid #DDD9D2",background:mode===id?"#FFF0EC":"#fff",cursor:"pointer",fontFamily:"inherit",textAlign:"center"}}>
+      <div style={{fontSize:18}}>{icon}</div>
+      <div style={{fontSize:11,fontWeight:600,color:mode===id?"#C84B31":"#605C55",marginTop:2}}>{label}</div>
+    </button>
+  );
+
+  const suggestions=result?parseSuggestions(result):null;
+
+  return(<div style={{padding:"12px 20px"}}>
+    <div style={{fontFamily:"'Fraunces',serif",fontSize:20,fontWeight:700,marginBottom:4}}>AI Assistant <span style={{fontSize:14,fontWeight:400,color:"#C84B31"}}>✨</span></div>
+    <p style={{fontSize:12.5,color:"#9A958D",marginBottom:14}}>Powered by Claude · Knows your full trip plan</p>
+
+    <div style={{display:"flex",gap:6,marginBottom:16}}>
+      <ModeBtn id="chat" icon="💬" label="Chat"/>
+      <ModeBtn id="food" icon="🍜" label="Food"/>
+      <ModeBtn id="activities" icon="🎯" label="Activities"/>
+      <ModeBtn id="optimize" icon="🧠" label="Optimize"/>
+      <ModeBtn id="briefing" icon="📋" label="Briefing"/>
+    </div>
+
+    {/* ── CHAT MODE ── */}
+    {mode==="chat"&&<div>
+      <div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:16,minHeight:200,maxHeight:400,overflowY:"auto",marginBottom:12}}>
+        {chatHistory.length===0&&<div style={{textAlign:"center",padding:"40px 20px",color:"#9A958D"}}><div style={{fontSize:28,marginBottom:8}}>💬</div><div style={{fontSize:13.5}}>Ask anything about your Japan trip!</div><div style={{fontSize:12,marginTop:4}}>"Do we need to book teamLab in advance?"<br/>"What's the best way to get from Tokyo to Osaka?"<br/>"Suggest a dinner spot near Shinjuku"</div></div>}
+        {chatHistory.map((m,i)=><div key={i} style={{marginBottom:12,display:"flex",flexDirection:"column",alignItems:m.role==="user"?"flex-end":"flex-start"}}>
+          <div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:14,fontSize:13.5,lineHeight:1.5,whiteSpace:"pre-wrap",background:m.role==="user"?"#C84B31":"#F5F4F0",color:m.role==="user"?"#fff":"#1A1816"}}>{m.text}</div>
+        </div>)}
+        {loading&&<div style={{display:"flex",gap:4,padding:8}}><div style={{width:8,height:8,borderRadius:4,background:"#C84B31",animation:"pulse 1s infinite"}}/>
+          <div style={{width:8,height:8,borderRadius:4,background:"#C84B31",animation:"pulse 1s infinite .2s"}}/>
+          <div style={{width:8,height:8,borderRadius:4,background:"#C84B31",animation:"pulse 1s infinite .4s"}}/></div>}
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <input value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!loading&&doChat()} placeholder="Ask about your trip..." style={{flex:1,padding:"11px 14px",border:"1.5px solid #DDD9D2",borderRadius:12,fontSize:14,fontFamily:"inherit",outline:"none"}}/>
+        <button onClick={doChat} disabled={loading} style={{background:"#C84B31",color:"#fff",border:"none",borderRadius:12,padding:"0 18px",fontSize:13.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit",opacity:loading?.6:1}}>Send</button>
+      </div>
+      <style>{`@keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}`}</style>
+    </div>}
+
+    {/* ── FOOD SUGGESTIONS ── */}
+    {mode==="food"&&<div>
+      <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center"}}>
+        <select value={suggestCity} onChange={e=>setSuggestCity(e.target.value)} style={{padding:"9px 12px",borderRadius:10,border:"1.5px solid #DDD9D2",fontSize:13.5,fontFamily:"inherit",flex:1}}>
+          {allCities.map(c=><option key={c}>{c}</option>)}
+        </select>
+        <button onClick={suggestFood} disabled={loading} style={{background:"#C84B31",color:"#fff",border:"none",borderRadius:12,padding:"10px 18px",fontSize:13.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit",opacity:loading?.6:1,whiteSpace:"nowrap"}}>{loading?"Thinking...":"✨ Suggest Food"}</button>
+      </div>
+      {suggestions&&Array.isArray(suggestions)?<div>{suggestions.map((s,i)=>(
+        <div key={i} style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:14,padding:14,marginBottom:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+            <div><div style={{fontSize:14,fontWeight:600}}>{s.name}</div>
+            <div style={{fontSize:12,color:"#9A958D"}}>{[s.cuisine,s.area,s.priceRange].filter(Boolean).join(" · ")}</div>
+            {s.whyGo&&<div style={{fontSize:12.5,color:"#605C55",marginTop:4}}>{s.whyGo}</div>}</div>
+            <button onClick={()=>addFoodFromSuggestion(s)} style={{background:"#E4F5EB",color:"#1A7A52",border:"none",borderRadius:10,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0,marginLeft:8}}>+ Add</button>
+          </div>
+        </div>
+      ))}</div>:result&&!loading?<div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:16,fontSize:13.5,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{result}</div>:null}
+    </div>}
+
+    {/* ── ACTIVITY SUGGESTIONS ── */}
+    {mode==="activities"&&<div>
+      <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center"}}>
+        <select value={suggestCity} onChange={e=>setSuggestCity(e.target.value)} style={{padding:"9px 12px",borderRadius:10,border:"1.5px solid #DDD9D2",fontSize:13.5,fontFamily:"inherit",flex:1}}>
+          {allCities.map(c=><option key={c}>{c}</option>)}
+        </select>
+        <button onClick={suggestActivities} disabled={loading} style={{background:"#C84B31",color:"#fff",border:"none",borderRadius:12,padding:"10px 18px",fontSize:13.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit",opacity:loading?.6:1,whiteSpace:"nowrap"}}>{loading?"Thinking...":"✨ Suggest Activities"}</button>
+      </div>
+      {suggestions&&Array.isArray(suggestions)?<div>{suggestions.map((s,i)=>(
+        <div key={i} style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:14,padding:14,marginBottom:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+            <div><div style={{fontSize:14,fontWeight:600}}>{s.name}</div>
+            <div style={{fontSize:12,color:"#9A958D"}}>{[s.estimatedCost,s.duration,s.bestTimeOfDay].filter(Boolean).join(" · ")}</div>
+            {s.description&&<div style={{fontSize:12.5,color:"#605C55",marginTop:4}}>{s.description}</div>}</div>
+            <button onClick={()=>addActivityFromSuggestion(s)} style={{background:"#E4F5EB",color:"#1A7A52",border:"none",borderRadius:10,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0,marginLeft:8}}>+ Add</button>
+          </div>
+        </div>
+      ))}</div>:result&&!loading?<div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:16,fontSize:13.5,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{result}</div>:null}
+    </div>}
+
+    {/* ── OPTIMIZE ── */}
+    {mode==="optimize"&&<div>
+      <div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:16,marginBottom:14}}>
+        <div style={{fontSize:14,fontWeight:600,marginBottom:6}}>🧠 Smart Itinerary Optimizer</div>
+        <p style={{fontSize:13,color:"#605C55",lineHeight:1.5,marginBottom:14}}>Claude will analyze your full itinerary and suggest improvements — better grouping by location, smarter scheduling, and balanced days.</p>
+        <button onClick={optimizeItinerary} disabled={loading} style={{background:"#C84B31",color:"#fff",border:"none",borderRadius:12,padding:"10px 18px",fontSize:13.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit",width:"100%",opacity:loading?.6:1}}>{loading?"Analyzing your trip...":"✨ Optimize My Itinerary"}</button>
+      </div>
+      {result&&!loading&&<div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:16,fontSize:13.5,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{result}</div>}
+    </div>}
+
+    {/* ── DAILY BRIEFING ── */}
+    {mode==="briefing"&&<div>
+      <p style={{fontSize:13,color:"#605C55",marginBottom:14}}>Tap a day to get an AI-generated briefing with tips, logistics, and meal suggestions.</p>
+      <div style={{maxHeight:300,overflowY:"auto",marginBottom:14}}>{data.itinerary.map((day,i)=>{
+        const[bg,fg]=getCityColor(day.city);
+        return(<div key={i} onClick={()=>dailyBriefing(i)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",border:"1px solid #DDD9D2",borderRadius:12,marginBottom:8,cursor:"pointer",background:"#fff"}}>
+          <div style={{width:36,height:36,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,fontFamily:"'Fraunces',serif",background:bg,color:fg}}>{day.day}</div>
+          <div><div style={{fontSize:13.5,fontWeight:600}}>{day.date}</div><div style={{fontSize:12,color:"#9A958D"}}>{day.city} · {day.activities.length} plans</div></div>
+        </div>);
+      })}</div>
+      {loading&&<div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:20,textAlign:"center",color:"#9A958D"}}>
+        <div style={{fontSize:24,marginBottom:8}}>📋</div>Generating briefing...</div>}
+      {result&&!loading&&<div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:16,fontSize:13.5,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{result}</div>}
+    </div>}
+  </div>);
+}
+
 // ── TRANSPORT ──
 // ── CALENDAR ──
 function CalendarTab({data,save,setTab:switchTab,setSub}){
@@ -721,6 +926,7 @@ function SettingsTab({data,save}){
 
 // ── MORE MENU ──
 const moreItems=[
+  {id:"budget",label:"Budget",desc:"Expenses & splitting",bg:"#E8F0FE",ic2:"#3D85C6",icon:<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><circle cx="16" cy="14" r="1" fill="currentColor"/></svg>},
   {id:"hotels",label:"Hotels",desc:"Accommodation details",bg:"#E4F5EB",ic2:"#1A7A52",icon:<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21V7a2 2 0 012-2h14a2 2 0 012 2v14"/><path d="M9 21V13h6v8M3 21h18"/></svg>},
   {id:"flights",label:"Flights",desc:"Flight information",bg:"#E8F0FE",ic2:"#3D85C6",icon:<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>},
   {id:"activities",label:"Activities",desc:"Things to do",bg:"#FFF3E0",ic2:"#D4850A",icon:<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>},
@@ -767,13 +973,14 @@ export default function App(){
       case"photos":return<PhotosTab data={data} save={save}/>;
       case"transport":return<TransportTab/>;
       case"weather":return<WeatherTab/>;
+      case"ai":return<AITab data={data} save={save}/>;
       case"settings":return<SettingsTab data={data} save={save}/>;
       case"more":return(<div style={{padding:"12px 20px"}}><div style={{fontFamily:"'Fraunces',serif",fontSize:20,fontWeight:700,marginBottom:16}}>More</div>{moreItems.map(m=>(<div key={m.id} onClick={()=>setSub(m.id)} style={{display:"flex",alignItems:"center",gap:14,cursor:"pointer",padding:"14px 16px",background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}><div style={{width:42,height:42,borderRadius:13,background:m.bg,display:"flex",alignItems:"center",justifyContent:"center",color:m.ic2,flexShrink:0}}>{m.icon}</div><div style={{flex:1}}><div style={{fontSize:14.5,fontWeight:600}}>{m.label}</div><div style={{fontSize:12.5,color:"#9A958D"}}>{m.desc}</div></div><div style={{color:"#9A958D"}}>{ic.chev}</div></div>))}</div>);
       default:return null;
     }
   };
 
-  const navItems=[{id:"itinerary",label:"Days",icon:navSvg.days},{id:"calendar",label:"Calendar",icon:<svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" strokeWidth="2"/></svg>},{id:"budget",label:"Budget",icon:navSvg.budget},{id:"food",label:"Food",icon:navSvg.food},{id:"more",label:"More",icon:navSvg.more}];
+  const navItems=[{id:"itinerary",label:"Days",icon:navSvg.days},{id:"calendar",label:"Calendar",icon:<svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" strokeWidth="2"/></svg>},{id:"ai",label:"AI",icon:<svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>},{id:"food",label:"Food",icon:navSvg.food},{id:"more",label:"More",icon:navSvg.more}];
 
   return(<>
     <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&display=swap');*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}body,html{font-family:'DM Sans',-apple-system,sans-serif;background:#F5F4F0;color:#17150F;font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow-x:hidden}`}</style>
