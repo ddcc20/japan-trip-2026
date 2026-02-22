@@ -541,6 +541,16 @@ function AITab({data,save}){
   const[chatHistory,setChatHistory]=useState([]);
   const[suggestCity,setSuggestCity]=useState((data.cities||["Tokyo"])[0]);
   const allCities=data.cities||["Tokyo"];
+  // Food preferences
+  const[foodVibe,setFoodVibe]=useState(null);// quick | casual | high-end | michelin
+  const[foodCuisine,setFoodCuisine]=useState(null);// sushi | ramen | izakaya | etc
+  const[foodBudget,setFoodBudget]=useState(null);// $ | $$ | $$$ | $$$$
+  const[foodStep,setFoodStep]=useState(0);// 0=prefs, 1=results
+  // Activity preferences
+  const[actType,setActType]=useState(null);// cultural | nature | shopping | nightlife | unique
+  const[actPace,setActPace]=useState(null);// chill | moderate | packed
+  const[actBudget,setActBudget]=useState(null);// free | budget | splurge
+  const[actStep,setActStep]=useState(0);
 
   const tripContext=()=>{
     const itin=data.itinerary.map(d=>`Day ${d.day} (${d.date}, ${d.city}): ${d.activities.length>0?d.activities.map(a=>`${a.time||"?"} ${a.text}`).join("; "):"no plans"}`).join("\n");
@@ -558,17 +568,27 @@ function AITab({data,save}){
   };
 
   const suggestFood=async()=>{
+    const prefs=[];
+    if(foodVibe)prefs.push(`Vibe: ${foodVibe}`);
+    if(foodCuisine)prefs.push(`Cuisine: ${foodCuisine}`);
+    if(foodBudget)prefs.push(`Budget: ${foodBudget}`);
     await doAI(
       "You are a Japan food expert. Respond ONLY with a JSON array of 5 objects with fields: name, cuisine, area, priceRange, whyGo. No markdown, no backticks, just the JSON array.",
-      `Suggest 5 must-try restaurants or food spots in ${suggestCity}, Japan for a group of ${data.members.length} travelers visiting in March 2026. Consider what they already have saved:\n${(data.restaurants||[]).filter(r=>r.city===suggestCity).map(r=>r.name).join(", ")||"nothing yet"}\n\nGive unique suggestions they don't already have.`
+      `Suggest 5 restaurants or food spots in ${suggestCity}, Japan for ${data.members.length} travelers in March 2026.\n\nPreferences:\n${prefs.join("\n")}\n\nAlready saved:\n${(data.restaurants||[]).filter(r=>r.city===suggestCity).map(r=>r.name).join(", ")||"nothing yet"}\n\nGive unique suggestions they don't already have. Match their preferences closely.`
     );
+    setFoodStep(1);
   };
 
   const suggestActivities=async()=>{
+    const prefs=[];
+    if(actType)prefs.push(`Type: ${actType}`);
+    if(actPace)prefs.push(`Pace: ${actPace}`);
+    if(actBudget)prefs.push(`Budget: ${actBudget}`);
     await doAI(
       "You are a Japan travel expert. Respond ONLY with a JSON array of 5 objects with fields: name, description, estimatedCost, duration, bestTimeOfDay. No markdown, no backticks, just the JSON array.",
-      `Suggest 5 activities in ${suggestCity}, Japan for ${data.members.length} travelers in March 2026. They already have:\n${(data.activities||[]).filter(a=>a.city===suggestCity).map(a=>a.name).join(", ")||"nothing yet"}\n\nSuggest things they haven't planned. Mix free and paid options.`
+      `Suggest 5 activities in ${suggestCity}, Japan for ${data.members.length} travelers in March 2026.\n\nPreferences:\n${prefs.join("\n")}\n\nAlready planned:\n${(data.activities||[]).filter(a=>a.city===suggestCity).map(a=>a.name).join(", ")||"nothing yet"}\n\nMatch their preferences. Give unique suggestions they haven't planned.`
     );
+    setActStep(1);
   };
 
   const optimizeItinerary=async()=>{
@@ -615,7 +635,7 @@ function AITab({data,save}){
   };
 
   const ModeBtn=({id,icon,label})=>(
-    <button onClick={()=>{setMode(id);setResult(null)}} style={{flex:1,padding:"10px 6px",borderRadius:14,border:mode===id?"2px solid #C84B31":"1.5px solid #DDD9D2",background:mode===id?"#FFF0EC":"#fff",cursor:"pointer",fontFamily:"inherit",textAlign:"center"}}>
+    <button onClick={()=>{setMode(id);setResult(null);setFoodStep(0);setActStep(0)}} style={{flex:1,padding:"10px 6px",borderRadius:14,border:mode===id?"2px solid #C84B31":"1.5px solid #DDD9D2",background:mode===id?"#FFF0EC":"#fff",cursor:"pointer",fontFamily:"inherit",textAlign:"center"}}>
       <div style={{fontSize:18}}>{icon}</div>
       <div style={{fontSize:11,fontWeight:600,color:mode===id?"#C84B31":"#605C55",marginTop:2}}>{label}</div>
     </button>
@@ -655,42 +675,142 @@ function AITab({data,save}){
 
     {/* ── FOOD SUGGESTIONS ── */}
     {mode==="food"&&<div>
-      <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center"}}>
-        <select value={suggestCity} onChange={e=>setSuggestCity(e.target.value)} style={{padding:"9px 12px",borderRadius:10,border:"1.5px solid #DDD9D2",fontSize:13.5,fontFamily:"inherit",flex:1}}>
+      {/* City picker */}
+      <div style={{marginBottom:14}}>
+        <select value={suggestCity} onChange={e=>{setSuggestCity(e.target.value);setFoodStep(0);setResult(null)}} style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid #DDD9D2",fontSize:13.5,fontFamily:"inherit"}}>
           {allCities.map(c=><option key={c}>{c}</option>)}
         </select>
-        <button onClick={suggestFood} disabled={loading} style={{background:"#C84B31",color:"#fff",border:"none",borderRadius:12,padding:"10px 18px",fontSize:13.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit",opacity:loading?.6:1,whiteSpace:"nowrap"}}>{loading?"Thinking...":"✨ Suggest Food"}</button>
       </div>
-      {suggestions&&Array.isArray(suggestions)?<div>{suggestions.map((s,i)=>(
-        <div key={i} style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:14,padding:14,marginBottom:8}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-            <div><div style={{fontSize:14,fontWeight:600}}>{s.name}</div>
-            <div style={{fontSize:12,color:"#9A958D"}}>{[s.cuisine,s.area,s.priceRange].filter(Boolean).join(" · ")}</div>
-            {s.whyGo&&<div style={{fontSize:12.5,color:"#605C55",marginTop:4}}>{s.whyGo}</div>}</div>
-            <button onClick={()=>addFoodFromSuggestion(s)} style={{background:"#E4F5EB",color:"#1A7A52",border:"none",borderRadius:10,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0,marginLeft:8}}>+ Add</button>
+
+      {foodStep===0&&<>
+        {/* Vibe */}
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:600,color:"#605C55",marginBottom:8,textTransform:"uppercase",letterSpacing:.5}}>What kind of experience?</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {[{id:"quick-bite",label:"🍙 Quick Bite",desc:"Grab and go"},{id:"casual",label:"🍜 Casual",desc:"Relaxed sit-down"},{id:"high-end",label:"🍷 High-End",desc:"Special occasion"},{id:"michelin",label:"⭐ Michelin",desc:"Star-rated"},{id:"street-food",label:"🏮 Street Food",desc:"Market stalls"},{id:"surprise-me",label:"🎲 Surprise Me",desc:"Dealer's choice"}].map(v=>(
+              <button key={v.id} onClick={()=>setFoodVibe(foodVibe===v.id?null:v.id)} style={{padding:"8px 14px",borderRadius:12,border:foodVibe===v.id?"2px solid #C84B31":"1.5px solid #DDD9D2",background:foodVibe===v.id?"#FFF0EC":"#fff",cursor:"pointer",fontFamily:"inherit",fontSize:12.5,fontWeight:500,color:foodVibe===v.id?"#C84B31":"#605C55"}}>{v.label}</button>
+            ))}
           </div>
         </div>
-      ))}</div>:result&&!loading?<div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:16,fontSize:13.5,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{result}</div>:null}
+
+        {/* Cuisine */}
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:600,color:"#605C55",marginBottom:8,textTransform:"uppercase",letterSpacing:.5}}>Cuisine preference?</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {[{id:"sushi",label:"🍣 Sushi"},{id:"ramen",label:"🍜 Ramen"},{id:"izakaya",label:"🍶 Izakaya"},{id:"tempura",label:"🍤 Tempura"},{id:"yakitori",label:"🍗 Yakitori"},{id:"wagyu-beef",label:"🥩 Wagyu/BBQ"},{id:"udon-soba",label:"🥢 Udon/Soba"},{id:"curry",label:"🍛 Japanese Curry"},{id:"kaiseki",label:"🎎 Kaiseki"},{id:"anything",label:"🌟 Open to Anything"}].map(c=>(
+              <button key={c.id} onClick={()=>setFoodCuisine(foodCuisine===c.id?null:c.id)} style={{padding:"8px 14px",borderRadius:12,border:foodCuisine===c.id?"2px solid #C84B31":"1.5px solid #DDD9D2",background:foodCuisine===c.id?"#FFF0EC":"#fff",cursor:"pointer",fontFamily:"inherit",fontSize:12.5,fontWeight:500,color:foodCuisine===c.id?"#C84B31":"#605C55"}}>{c.label}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Budget */}
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:12,fontWeight:600,color:"#605C55",marginBottom:8,textTransform:"uppercase",letterSpacing:.5}}>Budget per person?</div>
+          <div style={{display:"flex",gap:6}}>
+            {[{id:"$",label:"$ Under ¥1,000",desc:"~$7"},{id:"$$",label:"$$ ¥1,000–3,000",desc:"~$7–20"},{id:"$$$",label:"$$$ ¥3,000–8,000",desc:"~$20–55"},{id:"$$$$",label:"$$$$ ¥8,000+",desc:"~$55+"}].map(b=>(
+              <button key={b.id} onClick={()=>setFoodBudget(foodBudget===b.id?null:b.id)} style={{flex:1,padding:"10px 6px",borderRadius:12,border:foodBudget===b.id?"2px solid #C84B31":"1.5px solid #DDD9D2",background:foodBudget===b.id?"#FFF0EC":"#fff",cursor:"pointer",fontFamily:"inherit",textAlign:"center"}}>
+                <div style={{fontSize:13,fontWeight:600,color:foodBudget===b.id?"#C84B31":"#1A1816"}}>{b.id}</div>
+                <div style={{fontSize:10,color:"#9A958D",marginTop:2}}>{b.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button onClick={suggestFood} disabled={loading} style={{background:"#C84B31",color:"#fff",border:"none",borderRadius:12,padding:"12px 18px",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",width:"100%",opacity:loading?.6:1}}>{loading?"✨ Finding the best spots...":"✨ Get Recommendations"}</button>
+      </>}
+
+      {foodStep===1&&<>
+        <button onClick={()=>{setFoodStep(0);setResult(null)}} style={{background:"#EDEBE6",color:"#605C55",border:"none",borderRadius:10,padding:"7px 14px",fontSize:12.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit",marginBottom:12}}>← Change preferences</button>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+          {foodVibe&&<span style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:"#FFF0EC",color:"#C84B31",fontWeight:500}}>{foodVibe}</span>}
+          {foodCuisine&&<span style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:"#FFF0EC",color:"#C84B31",fontWeight:500}}>{foodCuisine}</span>}
+          {foodBudget&&<span style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:"#FFF0EC",color:"#C84B31",fontWeight:500}}>{foodBudget}</span>}
+          <span style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:"#EDEBE6",color:"#605C55",fontWeight:500}}>{suggestCity}</span>
+        </div>
+        {loading&&<div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:24,textAlign:"center",color:"#9A958D"}}><div style={{fontSize:24,marginBottom:8}}>🍜</div>Finding the best spots...</div>}
+        {suggestions&&Array.isArray(suggestions)?<div>{suggestions.map((s,i)=>(
+          <div key={i} style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:14,padding:14,marginBottom:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div><div style={{fontSize:14,fontWeight:600}}>{s.name}</div>
+              <div style={{fontSize:12,color:"#9A958D"}}>{[s.cuisine,s.area,s.priceRange].filter(Boolean).join(" · ")}</div>
+              {s.whyGo&&<div style={{fontSize:12.5,color:"#605C55",marginTop:4}}>{s.whyGo}</div>}</div>
+              <button onClick={()=>addFoodFromSuggestion(s)} style={{background:"#E4F5EB",color:"#1A7A52",border:"none",borderRadius:10,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0,marginLeft:8}}>+ Add</button>
+            </div>
+          </div>
+        ))}</div>:result&&!loading?<div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:16,fontSize:13.5,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{result}</div>:null}
+        {suggestions&&!loading&&<button onClick={()=>{setResult(null);suggestFood()}} style={{background:"#EDEBE6",color:"#605C55",border:"none",borderRadius:12,padding:"10px 18px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",width:"100%",marginTop:8}}>🔄 Get More Suggestions</button>}
+      </>}
     </div>}
 
     {/* ── ACTIVITY SUGGESTIONS ── */}
     {mode==="activities"&&<div>
-      <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center"}}>
-        <select value={suggestCity} onChange={e=>setSuggestCity(e.target.value)} style={{padding:"9px 12px",borderRadius:10,border:"1.5px solid #DDD9D2",fontSize:13.5,fontFamily:"inherit",flex:1}}>
+      <div style={{marginBottom:14}}>
+        <select value={suggestCity} onChange={e=>{setSuggestCity(e.target.value);setActStep(0);setResult(null)}} style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid #DDD9D2",fontSize:13.5,fontFamily:"inherit"}}>
           {allCities.map(c=><option key={c}>{c}</option>)}
         </select>
-        <button onClick={suggestActivities} disabled={loading} style={{background:"#C84B31",color:"#fff",border:"none",borderRadius:12,padding:"10px 18px",fontSize:13.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit",opacity:loading?.6:1,whiteSpace:"nowrap"}}>{loading?"Thinking...":"✨ Suggest Activities"}</button>
       </div>
-      {suggestions&&Array.isArray(suggestions)?<div>{suggestions.map((s,i)=>(
-        <div key={i} style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:14,padding:14,marginBottom:8}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-            <div><div style={{fontSize:14,fontWeight:600}}>{s.name}</div>
-            <div style={{fontSize:12,color:"#9A958D"}}>{[s.estimatedCost,s.duration,s.bestTimeOfDay].filter(Boolean).join(" · ")}</div>
-            {s.description&&<div style={{fontSize:12.5,color:"#605C55",marginTop:4}}>{s.description}</div>}</div>
-            <button onClick={()=>addActivityFromSuggestion(s)} style={{background:"#E4F5EB",color:"#1A7A52",border:"none",borderRadius:10,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0,marginLeft:8}}>+ Add</button>
+
+      {actStep===0&&<>
+        {/* Type */}
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:600,color:"#605C55",marginBottom:8,textTransform:"uppercase",letterSpacing:.5}}>What are you in the mood for?</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {[{id:"cultural",label:"⛩️ Cultural",desc:"Temples, shrines, museums"},{id:"nature",label:"🌸 Nature",desc:"Parks, gardens, views"},{id:"shopping",label:"🛍️ Shopping",desc:"Markets, districts, vintage"},{id:"nightlife",label:"🌃 Nightlife",desc:"Bars, entertainment"},{id:"unique",label:"🎌 Unique to Japan",desc:"Only-in-Japan experiences"},{id:"food-tour",label:"🍱 Food Tour",desc:"Eating-focused activities"},{id:"relaxation",label:"♨️ Relaxation",desc:"Onsen, spas, tea"},{id:"surprise-me",label:"🎲 Surprise Me",desc:"Dealer's choice"}].map(t=>(
+              <button key={t.id} onClick={()=>setActType(actType===t.id?null:t.id)} style={{padding:"8px 14px",borderRadius:12,border:actType===t.id?"2px solid #C84B31":"1.5px solid #DDD9D2",background:actType===t.id?"#FFF0EC":"#fff",cursor:"pointer",fontFamily:"inherit",fontSize:12.5,fontWeight:500,color:actType===t.id?"#C84B31":"#605C55"}}>{t.label}</button>
+            ))}
           </div>
         </div>
-      ))}</div>:result&&!loading?<div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:16,fontSize:13.5,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{result}</div>:null}
+
+        {/* Pace */}
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:600,color:"#605C55",marginBottom:8,textTransform:"uppercase",letterSpacing:.5}}>How's your energy?</div>
+          <div style={{display:"flex",gap:6}}>
+            {[{id:"chill",label:"😌 Chill",desc:"Take it easy"},{id:"moderate",label:"🚶 Moderate",desc:"Balanced pace"},{id:"packed",label:"⚡ Go-getter",desc:"See it all"}].map(p=>(
+              <button key={p.id} onClick={()=>setActPace(actPace===p.id?null:p.id)} style={{flex:1,padding:"10px 8px",borderRadius:12,border:actPace===p.id?"2px solid #C84B31":"1.5px solid #DDD9D2",background:actPace===p.id?"#FFF0EC":"#fff",cursor:"pointer",fontFamily:"inherit",textAlign:"center"}}>
+                <div style={{fontSize:13,fontWeight:600,color:actPace===p.id?"#C84B31":"#1A1816"}}>{p.label}</div>
+                <div style={{fontSize:10,color:"#9A958D",marginTop:2}}>{p.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Budget */}
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:12,fontWeight:600,color:"#605C55",marginBottom:8,textTransform:"uppercase",letterSpacing:.5}}>Budget?</div>
+          <div style={{display:"flex",gap:6}}>
+            {[{id:"free",label:"🆓 Free",desc:"No-cost activities"},{id:"budget",label:"💴 Budget",desc:"Under ¥2,000"},{id:"mid",label:"💰 Mid-Range",desc:"¥2,000–5,000"},{id:"splurge",label:"💎 Splurge",desc:"Worth every yen"}].map(b=>(
+              <button key={b.id} onClick={()=>setActBudget(actBudget===b.id?null:b.id)} style={{flex:1,padding:"10px 6px",borderRadius:12,border:actBudget===b.id?"2px solid #C84B31":"1.5px solid #DDD9D2",background:actBudget===b.id?"#FFF0EC":"#fff",cursor:"pointer",fontFamily:"inherit",textAlign:"center"}}>
+                <div style={{fontSize:12,fontWeight:600,color:actBudget===b.id?"#C84B31":"#1A1816"}}>{b.label}</div>
+                <div style={{fontSize:9.5,color:"#9A958D",marginTop:2}}>{b.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button onClick={suggestActivities} disabled={loading} style={{background:"#C84B31",color:"#fff",border:"none",borderRadius:12,padding:"12px 18px",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",width:"100%",opacity:loading?.6:1}}>{loading?"✨ Finding activities...":"✨ Get Recommendations"}</button>
+      </>}
+
+      {actStep===1&&<>
+        <button onClick={()=>{setActStep(0);setResult(null)}} style={{background:"#EDEBE6",color:"#605C55",border:"none",borderRadius:10,padding:"7px 14px",fontSize:12.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit",marginBottom:12}}>← Change preferences</button>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+          {actType&&<span style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:"#FFF0EC",color:"#C84B31",fontWeight:500}}>{actType}</span>}
+          {actPace&&<span style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:"#FFF0EC",color:"#C84B31",fontWeight:500}}>{actPace}</span>}
+          {actBudget&&<span style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:"#FFF0EC",color:"#C84B31",fontWeight:500}}>{actBudget}</span>}
+          <span style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:"#EDEBE6",color:"#605C55",fontWeight:500}}>{suggestCity}</span>
+        </div>
+        {loading&&<div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:24,textAlign:"center",color:"#9A958D"}}><div style={{fontSize:24,marginBottom:8}}>🎯</div>Finding activities...</div>}
+        {suggestions&&Array.isArray(suggestions)?<div>{suggestions.map((s,i)=>(
+          <div key={i} style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:14,padding:14,marginBottom:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div><div style={{fontSize:14,fontWeight:600}}>{s.name}</div>
+              <div style={{fontSize:12,color:"#9A958D"}}>{[s.estimatedCost,s.duration,s.bestTimeOfDay].filter(Boolean).join(" · ")}</div>
+              {s.description&&<div style={{fontSize:12.5,color:"#605C55",marginTop:4}}>{s.description}</div>}</div>
+              <button onClick={()=>addActivityFromSuggestion(s)} style={{background:"#E4F5EB",color:"#1A7A52",border:"none",borderRadius:10,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0,marginLeft:8}}>+ Add</button>
+            </div>
+          </div>
+        ))}</div>:result&&!loading?<div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:16,fontSize:13.5,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{result}</div>:null}
+        {suggestions&&!loading&&<button onClick={()=>{setResult(null);suggestActivities()}} style={{background:"#EDEBE6",color:"#605C55",border:"none",borderRadius:12,padding:"10px 18px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",width:"100%",marginTop:8}}>🔄 Get More Suggestions</button>}
+      </>}
     </div>}
 
     {/* ── OPTIMIZE ── */}
