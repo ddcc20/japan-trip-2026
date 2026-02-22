@@ -122,6 +122,7 @@ const ic={
   chev:<svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>,
   back:<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>,
   pin:<svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>,
+  cal:<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>,
 };
 
 // ── ITINERARY ──
@@ -129,11 +130,12 @@ function ItineraryTab({data,save}){
   const today=new Date();today.setHours(0,0,0,0);
   const todayIdx=data.itinerary.findIndex(d=>d.isoDate&&new Date(d.isoDate+"T00:00:00").getTime()===today.getTime());
   const[exp,setExp]=useState(todayIdx>=0?todayIdx:0);
-  const[showAdd,setShowAdd]=useState(false);const[addDay,setAddDay]=useState(null);const[na,setNa]=useState({time:"",text:""});
+  const[showAdd,setShowAdd]=useState(false);const[addDay,setAddDay]=useState(null);
+  const[na,setNa]=useState({time:"",text:"",location:""});
+  const[editAct,setEditAct]=useState(null);// {dayIdx, activity}
   const todayRef=useRef(null);
   const scrolledRef=useRef(false);
 
-  // Auto-scroll to today's card on mount
   useEffect(()=>{
     if(todayIdx>=0&&todayRef.current&&!scrolledRef.current){
       setTimeout(()=>{todayRef.current.scrollIntoView({behavior:"smooth",block:"start"})},300);
@@ -141,8 +143,10 @@ function ItineraryTab({data,save}){
     }
   },[todayIdx]);
 
-  const doAdd=()=>{if(!na.text.trim())return;const u=[...data.itinerary];u[addDay]={...u[addDay],activities:[...u[addDay].activities,{...na,id:Date.now()+""}]};save({...data,itinerary:u});setNa({time:"",text:""});setShowAdd(false)};
+  const mapsUrl=(loc)=>loc?"https://www.google.com/maps/search/"+encodeURIComponent(loc):"";
+  const doAdd=()=>{if(!na.text.trim())return;const u=[...data.itinerary];u[addDay]={...u[addDay],activities:[...u[addDay].activities,{...na,id:Date.now()+"",mapsLink:mapsUrl(na.location)}]};save({...data,itinerary:u});setNa({time:"",text:"",location:""});setShowAdd(false)};
   const doRm=(di,aid)=>{const u=[...data.itinerary];u[di]={...u[di],activities:u[di].activities.filter(a=>a.id!==aid)};save({...data,itinerary:u})};
+  const doEdit=()=>{if(!editAct)return;const u=[...data.itinerary];const di=editAct.dayIdx;u[di]={...u[di],activities:u[di].activities.map(a=>a.id===editAct.id?{...editAct,mapsLink:mapsUrl(editAct.location)}:a)};save({...data,itinerary:u});setEditAct(null)};
   const uniqueCities=[...new Set(data.itinerary.map(d=>d.city).filter(c=>c&&c!=="TBD"))];
 
   return(<div style={{padding:"12px 20px"}}>
@@ -169,7 +173,21 @@ function ItineraryTab({data,save}){
             {acts.map((a,j)=>(<div key={a.id} style={{position:"relative",padding:"6px 0",display:"flex",gap:10,alignItems:"flex-start"}}>
               <div style={{position:"absolute",left:-20,top:11,width:9,height:9,borderRadius:"50%",background:j===0?"#C84B31":"#E0A090",border:"2px solid #fff",zIndex:1}}/>
               <div style={{fontSize:11.5,fontWeight:600,color:"#9A958D",minWidth:52,paddingTop:1}}>{a.time?fmtTime(a.time):"—"}</div>
-              <div style={{flex:1,display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{fontSize:13.5,lineHeight:1.4}}>{a.text}</div><IconBtn danger onClick={e=>{e.stopPropagation();doRm(i,a.id)}} style={{width:28,height:28,marginLeft:8}}>{ic.trash}</IconBtn></div>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div style={{fontSize:13.5,lineHeight:1.4}}>{a.text}</div>
+                  <div style={{display:"flex",gap:4,flexShrink:0,marginLeft:8}}>
+                    <IconBtn onClick={e=>{e.stopPropagation();setEditAct({...a,dayIdx:i})}} style={{width:28,height:28}}>{ic.edit}</IconBtn>
+                    <IconBtn danger onClick={e=>{e.stopPropagation();doRm(i,a.id)}} style={{width:28,height:28}}>{ic.trash}</IconBtn>
+                  </div>
+                </div>
+                {a.location&&<div style={{fontSize:12,marginTop:3}}>
+                  <a href={a.mapsLink||mapsUrl(a.location)} target="_blank" rel="noopener" style={{color:"#C84B31",textDecoration:"none",display:"inline-flex",alignItems:"center",gap:3}}>
+                    <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                    {a.location} →
+                  </a>
+                </div>}
+              </div>
             </div>))}
           </div>):<div style={{fontSize:13,color:"#9A958D",padding:"8px 0"}}>No plans yet.</div>}
           <Btn ghost sm full onClick={()=>{setAddDay(i);setShowAdd(true)}} style={{marginTop:10}}>{ic.plus} Add Activity</Btn>
@@ -177,9 +195,18 @@ function ItineraryTab({data,save}){
       </div>);
     })}
     <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="Add Activity">
-      <Input label="Time (optional)" type="time" value={na.time} onChange={e=>setNa({...na,time:e.target.value})}/>
       <Input label="Activity" placeholder="e.g. Visit Meiji Shrine" value={na.text} onChange={e=>setNa({...na,text:e.target.value})}/>
+      <Input label="Location (optional)" placeholder="e.g. Senso-ji Temple, Tokyo" value={na.location} onChange={e=>setNa({...na,location:e.target.value})}/>
+      {na.location&&<p style={{fontSize:12,color:"#9A958D",marginTop:-8,marginBottom:14}}>📍 Will create a Google Maps link for "{na.location}"</p>}
+      <Input label="Time (optional)" type="time" value={na.time} onChange={e=>setNa({...na,time:e.target.value})}/>
       <Btn primary full onClick={doAdd}>Add Activity</Btn>
+    </Modal>
+    <Modal open={!!editAct} onClose={()=>setEditAct(null)} title="Edit Activity">
+      {editAct&&<><Input label="Activity" value={editAct.text} onChange={e=>setEditAct({...editAct,text:e.target.value})}/>
+      <Input label="Location (optional)" placeholder="e.g. Senso-ji Temple, Tokyo" value={editAct.location||""} onChange={e=>setEditAct({...editAct,location:e.target.value})}/>
+      {editAct.location&&<p style={{fontSize:12,color:"#9A958D",marginTop:-8,marginBottom:14}}>📍 Opens in Google Maps: "{editAct.location}"</p>}
+      <Input label="Time (optional)" type="time" value={editAct.time||""} onChange={e=>setEditAct({...editAct,time:e.target.value})}/>
+      <Btn primary full onClick={doEdit}>Save Changes</Btn></>}
     </Modal>
   </div>);
 }
@@ -188,8 +215,11 @@ function ItineraryTab({data,save}){
 function BudgetTab({data,save}){
   const[showAdd,setShowAdd]=useState(false);const[tab,setTab]=useState("overview");
   const[ne,setNe]=useState({description:"",amount:"",paidBy:data.members[0],splitBetween:[...data.members],category:"Food"});
+  const[editExp,setEditExp]=useState(null);
   const doAdd=()=>{if(!ne.description||!ne.amount)return;save({...data,expenses:[...data.expenses,{...ne,id:Date.now()+"",amount:parseFloat(ne.amount)}]});setNe({description:"",amount:"",paidBy:data.members[0],splitBetween:[...data.members],category:"Food"});setShowAdd(false)};
   const doRm=id=>save({...data,expenses:data.expenses.filter(e=>e.id!==id)});
+  const doEditExp=()=>{if(!editExp)return;save({...data,expenses:data.expenses.map(e=>e.id===editExp.id?{...editExp,amount:parseFloat(editExp.amount)||0}:e)});setEditExp(null)};
+  const toggleSplitEdit=(m)=>{if(!editExp)return;const c=editExp.splitBetween;if(c.includes(m)){if(c.length>1)setEditExp({...editExp,splitBetween:c.filter(x=>x!==m)})}else setEditExp({...editExp,splitBetween:[...c,m]})}
   const tot=data.expenses.reduce((s,e)=>s+e.amount,0);
   const bal={};data.members.forEach(m=>{bal[m]=0});data.expenses.forEach(e=>{const sp=e.amount/e.splitBetween.length;bal[e.paidBy]+=e.amount;e.splitBetween.forEach(m=>{bal[m]-=sp})});
   const pps={};data.members.forEach(m=>{pps[m]=0});data.expenses.forEach(e=>{const sp=e.amount/e.splitBetween.length;e.splitBetween.forEach(m=>{pps[m]+=sp})});
@@ -206,7 +236,7 @@ function BudgetTab({data,save}){
     </div>
     <div style={{display:"flex",gap:6,marginBottom:14}}><Tab id="overview">Overview</Tab><Tab id="person">Per Person</Tab><Tab id="settle">Settlements</Tab></div>
     {tab==="overview"&&<>{Object.keys(byCat).length>0&&<div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:16,marginBottom:12,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}><div style={{fontSize:13,fontWeight:600,marginBottom:12}}>By Category</div>{Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([c,a])=>(<div key={c} style={{marginBottom:10}}><div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:2}}><span style={{display:"flex",alignItems:"center",gap:6}}><span style={{width:8,height:8,borderRadius:4,background:catColor[c],display:"inline-block"}}/>{c}</span><span style={{fontWeight:600}}>${a.toFixed(0)}</span></div><div style={{height:6,background:"#EDEBE6",borderRadius:6,overflow:"hidden"}}><div style={{height:"100%",borderRadius:6,width:`${(a/tot)*100}%`,background:catColor[c]}}/></div></div>))}</div>}
-      <div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:"4px 16px",boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>{[...data.expenses].reverse().map(e=>(<div key={e.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 0",borderBottom:"1px solid #ECEAE5"}}><div><div style={{fontSize:14,fontWeight:500}}>{e.description}</div><div style={{fontSize:12,color:"#9A958D"}}><span style={{width:6,height:6,borderRadius:3,background:catColor[e.category],display:"inline-block",marginRight:4}}/>{e.category} · {e.paidBy}</div></div><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{textAlign:"right"}}><div style={{fontSize:14,fontWeight:600}}>${e.amount.toFixed(2)}</div><div style={{fontSize:11,color:"#9A958D"}}>¥{(e.amount*RATE).toLocaleString("en",{maximumFractionDigits:0})}</div></div><IconBtn danger onClick={()=>doRm(e.id)}>{ic.trash}</IconBtn></div></div>))}</div></>}
+      <div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:"4px 16px",boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>{[...data.expenses].reverse().map(e=>(<div key={e.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 0",borderBottom:"1px solid #ECEAE5"}}><div><div style={{fontSize:14,fontWeight:500}}>{e.description}</div><div style={{fontSize:12,color:"#9A958D"}}><span style={{width:6,height:6,borderRadius:3,background:catColor[e.category],display:"inline-block",marginRight:4}}/>{e.category} · {e.paidBy}</div></div><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{textAlign:"right"}}><div style={{fontSize:14,fontWeight:600}}>${e.amount.toFixed(2)}</div><div style={{fontSize:11,color:"#9A958D"}}>¥{(e.amount*RATE).toLocaleString("en",{maximumFractionDigits:0})}</div></div><IconBtn onClick={()=>setEditExp({...e,amount:e.amount+""})}>{ic.edit}</IconBtn><IconBtn danger onClick={()=>doRm(e.id)}>{ic.trash}</IconBtn></div></div>))}</div></>}
     {tab==="person"&&<div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:"4px 16px",boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>{data.members.map(m=>(<div key={m} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 0",borderBottom:"1px solid #ECEAE5"}}><div><div style={{fontSize:14,fontWeight:600}}>{m}</div><div style={{fontSize:12,color:"#9A958D"}}>Paid ${data.expenses.filter(e=>e.paidBy===m).reduce((s,e)=>s+e.amount,0).toFixed(2)}</div></div><div style={{textAlign:"right"}}><div style={{fontSize:14,fontWeight:600}}>${(pps[m]||0).toFixed(2)}</div><div style={{fontSize:12,fontWeight:500,color:bal[m]>.01?"#1A7A52":bal[m]<-.01?"#D44":"#9A958D"}}>{bal[m]>.01?`Owed $${bal[m].toFixed(2)}`:bal[m]<-.01?`Owes $${(-bal[m]).toFixed(2)}`:"Settled ✓"}</div></div></div>))}</div>}
     {tab==="settle"&&<div>{sett.length===0?<div style={{textAlign:"center",padding:32,color:"#9A958D"}}>All settled up!</div>:sett.map((s,i)=>(<div key={i} style={{background:"#FFF0EC",border:"1.5px solid #F0C4B6",borderRadius:16,padding:16,marginBottom:10}}><div style={{display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:500}}>{s.from}<span style={{color:"#C84B31",fontWeight:700,margin:"0 8px"}}>→</span>{s.to}</div><div style={{textAlign:"center",fontFamily:"'Fraunces',serif",fontSize:24,fontWeight:700,marginTop:4,color:"#C84B31"}}>${s.amount.toFixed(2)}</div></div>))}</div>}
     <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="Add Expense">
@@ -216,6 +246,13 @@ function BudgetTab({data,save}){
       <div style={{marginBottom:14}}><label style={{display:"block",fontSize:11.5,fontWeight:600,color:"#605C55",marginBottom:5,textTransform:"uppercase",letterSpacing:.6}}>Split Between</label><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{data.members.map(m=><Btn key={m} primary={ne.splitBetween.includes(m)} ghost={!ne.splitBetween.includes(m)} sm onClick={()=>toggleSplit(m)}>{m}</Btn>)}</div></div>
       <Btn primary full onClick={doAdd}>Add Expense</Btn>
     </Modal>
+    <Modal open={!!editExp} onClose={()=>setEditExp(null)} title="Edit Expense">
+      {editExp&&<><Input label="Description" value={editExp.description} onChange={e=>setEditExp({...editExp,description:e.target.value})}/>
+      <div style={{display:"flex",gap:10}}><div style={{flex:1}}><Input label="Amount (USD)" type="number" value={editExp.amount} onChange={e=>setEditExp({...editExp,amount:e.target.value})}/></div><div style={{flex:1}}><Select label="Category" value={editExp.category} onChange={e=>setEditExp({...editExp,category:e.target.value})}>{cats.map(c=><option key={c}>{c}</option>)}</Select></div></div>
+      <Select label="Paid By" value={editExp.paidBy} onChange={e=>setEditExp({...editExp,paidBy:e.target.value})}>{data.members.map(m=><option key={m}>{m}</option>)}</Select>
+      <div style={{marginBottom:14}}><label style={{display:"block",fontSize:11.5,fontWeight:600,color:"#605C55",marginBottom:5,textTransform:"uppercase",letterSpacing:.6}}>Split Between</label><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{data.members.map(m=><Btn key={m} primary={editExp.splitBetween.includes(m)} ghost={!editExp.splitBetween.includes(m)} sm onClick={()=>toggleSplitEdit(m)}>{m}</Btn>)}</div></div>
+      <Btn primary full onClick={doEditExp}>Save Changes</Btn></>}
+    </Modal>
   </div>);
 }
 
@@ -224,15 +261,19 @@ function FoodTab({data,save}){
   const[tab,setTab]=useState("restaurants");const[showAdd,setShowAdd]=useState(false);
   const allCities=data.cities||DEFAULT_CITIES;
   const[ni,setNi]=useState({name:"",location:"",cuisine:"",notes:"",city:allCities[0]||"Tokyo"});
+  const[editItem,setEditItem]=useState(null);
+  const[addToDay,setAddToDay]=useState(null);// item to add to itinerary
   const doAdd=()=>{if(!ni.name.trim())return;const item={...ni,id:Date.now()+""};if(tab==="restaurants")save({...data,restaurants:[...data.restaurants,item]});else save({...data,quickEats:[...data.quickEats,item]});setNi({name:"",location:"",cuisine:"",notes:"",city:allCities[0]||"Tokyo"});setShowAdd(false)};
   const doRm=id=>{if(tab==="restaurants")save({...data,restaurants:data.restaurants.filter(r=>r.id!==id)});else save({...data,quickEats:data.quickEats.filter(r=>r.id!==id)})};
+  const doEditItem=()=>{if(!editItem)return;if(tab==="restaurants")save({...data,restaurants:data.restaurants.map(r=>r.id===editItem.id?editItem:r)});else save({...data,quickEats:data.quickEats.map(r=>r.id===editItem.id?editItem:r)});setEditItem(null)};
+  const doAddToItinerary=(dayIdx)=>{if(!addToDay)return;const mapsUrl=addToDay.location?"https://www.google.com/maps/search/"+encodeURIComponent(addToDay.name+(addToDay.location?" "+addToDay.location:"")):"";const act={id:Date.now()+"",time:"",text:addToDay.name+(addToDay.cuisine?" ("+addToDay.cuisine+")":""),location:addToDay.location||addToDay.name,mapsLink:mapsUrl};const u=[...data.itinerary];u[dayIdx]={...u[dayIdx],activities:[...u[dayIdx].activities,act]};save({...data,itinerary:u});setAddToDay(null)};
   const items=tab==="restaurants"?data.restaurants:data.quickEats;
   const Tab2=({id,count,children})=><button onClick={()=>setTab(id)} style={{padding:"7px 14px",borderRadius:20,fontSize:13,fontWeight:500,border:"none",cursor:"pointer",fontFamily:"inherit",background:tab===id?"#17150F":"#EDEBE6",color:tab===id?"#fff":"#605C55"}}>{children}{count>0&&<span style={{marginLeft:4,fontSize:11,fontWeight:600,padding:"2px 6px",borderRadius:10,background:tab===id?"rgba(255,255,255,.2)":"#DDD9D2"}}>{count}</span>}</button>;
 
   return(<div style={{padding:"12px 20px"}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><div style={{fontFamily:"'Fraunces',serif",fontSize:20,fontWeight:700}}>Food & Dining</div><Btn primary sm onClick={()=>setShowAdd(true)}>{ic.plus} Add</Btn></div>
     <div style={{display:"flex",gap:6,marginBottom:14}}><Tab2 id="restaurants" count={data.restaurants.length}>Restaurants</Tab2><Tab2 id="quickeats" count={data.quickEats.length}>Quick Eats</Tab2></div>
-    <div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:"4px 16px",boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>{items.length===0?<div style={{textAlign:"center",padding:32,color:"#9A958D"}}>No items saved.</div>:items.map(item=>(<div key={item.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 0",borderBottom:"1px solid #ECEAE5"}}><div style={{flex:1}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><span style={{fontSize:14,fontWeight:600}}>{item.name}</span><Chip city={item.city}/></div><div style={{fontSize:12.5,color:"#9A958D"}}>{[item.cuisine,item.location].filter(Boolean).join(" · ")}</div>{item.notes&&<div style={{fontSize:12.5,color:"#605C55",marginTop:3}}>{item.notes}</div>}</div><IconBtn danger onClick={()=>doRm(item.id)} style={{marginLeft:8}}>{ic.trash}</IconBtn></div>))}</div>
+    <div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:"4px 16px",boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>{items.length===0?<div style={{textAlign:"center",padding:32,color:"#9A958D"}}>No items saved.</div>:items.map(item=>(<div key={item.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 0",borderBottom:"1px solid #ECEAE5"}}><div style={{flex:1}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><span style={{fontSize:14,fontWeight:600}}>{item.name}</span><Chip city={item.city}/></div><div style={{fontSize:12.5,color:"#9A958D"}}>{[item.cuisine,item.location].filter(Boolean).join(" · ")}</div>{item.notes&&<div style={{fontSize:12.5,color:"#605C55",marginTop:3}}>{item.notes}</div>}</div><div style={{display:"flex",gap:4,flexShrink:0,marginLeft:8}}><IconBtn onClick={()=>setAddToDay(item)} style={{background:"#E4F5EB",color:"#1A7A52"}}>{ic.cal}</IconBtn><IconBtn onClick={()=>setEditItem({...item})}>{ic.edit}</IconBtn><IconBtn danger onClick={()=>doRm(item.id)}>{ic.trash}</IconBtn></div></div>))}</div>
     <Modal open={showAdd} onClose={()=>setShowAdd(false)} title={tab==="restaurants"?"Add Restaurant":"Add Quick Eat"}>
       <Input label="Name" placeholder="e.g. Ichiran Ramen" value={ni.name} onChange={e=>setNi({...ni,name:e.target.value})}/>
       <div style={{display:"flex",gap:10}}><div style={{flex:1}}><Input label="Cuisine" placeholder="e.g. Ramen" value={ni.cuisine} onChange={e=>setNi({...ni,cuisine:e.target.value})}/></div><div style={{flex:1}}><Select label="City" value={ni.city} onChange={e=>setNi({...ni,city:e.target.value})}>{allCities.map(c=><option key={c}>{c}</option>)}</Select></div></div>
@@ -240,10 +281,22 @@ function FoodTab({data,save}){
       <Input label="Notes" placeholder="Reservation needed?" value={ni.notes} onChange={e=>setNi({...ni,notes:e.target.value})}/>
       <Btn primary full onClick={doAdd}>Save</Btn>
     </Modal>
+    <Modal open={!!editItem} onClose={()=>setEditItem(null)} title="Edit Item">
+      {editItem&&<><Input label="Name" value={editItem.name} onChange={e=>setEditItem({...editItem,name:e.target.value})}/>
+      <div style={{display:"flex",gap:10}}><div style={{flex:1}}><Input label="Cuisine" value={editItem.cuisine||""} onChange={e=>setEditItem({...editItem,cuisine:e.target.value})}/></div><div style={{flex:1}}><Select label="City" value={editItem.city} onChange={e=>setEditItem({...editItem,city:e.target.value})}>{allCities.map(c=><option key={c}>{c}</option>)}</Select></div></div>
+      <Input label="Location" value={editItem.location||""} onChange={e=>setEditItem({...editItem,location:e.target.value})}/>
+      <Input label="Notes" value={editItem.notes||""} onChange={e=>setEditItem({...editItem,notes:e.target.value})}/>
+      <Btn primary full onClick={doEditItem}>Save Changes</Btn></>}
+    </Modal>
+    <Modal open={!!addToDay} onClose={()=>setAddToDay(null)} title={addToDay?"Add \""+addToDay.name+"\" to Itinerary":""}>
+      {addToDay&&<><p style={{fontSize:13.5,color:"#605C55",marginBottom:14}}>Which day should this be added to?</p>
+      <div style={{maxHeight:300,overflowY:"auto"}}>{data.itinerary.map((day,i)=>{const[bg2,fg2]=getCityColor(day.city);return(<div key={i} onClick={()=>doAddToItinerary(i)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",border:"1px solid #DDD9D2",borderRadius:12,marginBottom:8,cursor:"pointer",background:"#fff"}}>
+        <div style={{width:36,height:36,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,fontFamily:"'Fraunces',serif",background:bg2,color:fg2}}>{day.day}</div>
+        <div><div style={{fontSize:13.5,fontWeight:600}}>{day.date}</div><div style={{fontSize:12,color:"#9A958D"}}>{day.city} · {day.activities.length} plans</div></div>
+      </div>)})}</div></>}
+    </Modal>
   </div>);
 }
-
-// ── HOTELS ──
 function HotelsTab({data,save}){
   const[showAdd,setShowAdd]=useState(false);
   const allCities=data.cities||DEFAULT_CITIES;
@@ -313,16 +366,33 @@ function FlightsTab({data,save}){
 function ActivitiesTab({data,save}){
   const[showAdd,setShowAdd]=useState(false);const allCities=data.cities||DEFAULT_CITIES;
   const[na,setNa]=useState({name:"",city:allCities[0]||"Tokyo",notes:"",cost:""});
+  const[editAct,setEditAct]=useState(null);
+  const[addToDay,setAddToDay]=useState(null);
   const doAdd=()=>{if(!na.name.trim())return;save({...data,activities:[...data.activities,{...na,id:Date.now()+""}]});setNa({name:"",city:allCities[0]||"Tokyo",notes:"",cost:""});setShowAdd(false)};
   const doRm=id=>save({...data,activities:data.activities.filter(a=>a.id!==id)});
+  const doEditAct=()=>{if(!editAct)return;save({...data,activities:data.activities.map(a=>a.id===editAct.id?editAct:a)});setEditAct(null)};
+  const doAddToItinerary=(dayIdx)=>{if(!addToDay)return;const mapsUrl=addToDay.name?"https://www.google.com/maps/search/"+encodeURIComponent(addToDay.name):"";const act={id:Date.now()+"",time:"",text:addToDay.name+(addToDay.cost&&addToDay.cost!=="0"?" (~$"+addToDay.cost+")":""),location:addToDay.name,mapsLink:mapsUrl};const u=[...data.itinerary];u[dayIdx]={...u[dayIdx],activities:[...u[dayIdx].activities,act]};save({...data,itinerary:u});setAddToDay(null)};
   return(<div style={{padding:"12px 20px"}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><div style={{fontFamily:"'Fraunces',serif",fontSize:20,fontWeight:700}}>Activities</div><Btn primary sm onClick={()=>setShowAdd(true)}>{ic.plus} Add</Btn></div>
-    <div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:"4px 16px",boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>{data.activities.length===0?<div style={{textAlign:"center",padding:32,color:"#9A958D"}}>No activities.</div>:data.activities.map(a=>(<div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 0",borderBottom:"1px solid #ECEAE5"}}><div style={{flex:1}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><span style={{fontSize:14,fontWeight:600}}>{a.name}</span><Chip city={a.city}/></div><div style={{fontSize:12.5,color:"#9A958D"}}>{a.cost&&a.cost!=="0"?`~$${a.cost}/person`:"Free"}</div>{a.notes&&<div style={{fontSize:12.5,color:"#605C55",marginTop:3}}>{a.notes}</div>}</div><IconBtn danger onClick={()=>doRm(a.id)} style={{marginLeft:8}}>{ic.trash}</IconBtn></div>))}</div>
+    <div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:"4px 16px",boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>{data.activities.length===0?<div style={{textAlign:"center",padding:32,color:"#9A958D"}}>No activities.</div>:data.activities.map(a=>(<div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 0",borderBottom:"1px solid #ECEAE5"}}><div style={{flex:1}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><span style={{fontSize:14,fontWeight:600}}>{a.name}</span><Chip city={a.city}/></div><div style={{fontSize:12.5,color:"#9A958D"}}>{a.cost&&a.cost!=="0"?`~$${a.cost}/person`:"Free"}</div>{a.notes&&<div style={{fontSize:12.5,color:"#605C55",marginTop:3}}>{a.notes}</div>}</div><div style={{display:"flex",gap:4,flexShrink:0,marginLeft:8}}><IconBtn onClick={()=>setAddToDay(a)} style={{background:"#E4F5EB",color:"#1A7A52"}}>{ic.cal}</IconBtn><IconBtn onClick={()=>setEditAct({...a})}>{ic.edit}</IconBtn><IconBtn danger onClick={()=>doRm(a.id)}>{ic.trash}</IconBtn></div></div>))}</div>
     <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="Add Activity">
       <Input label="Activity Name" placeholder="e.g. teamLab Borderless" value={na.name} onChange={e=>setNa({...na,name:e.target.value})}/>
       <div style={{display:"flex",gap:10}}><div style={{flex:1}}><Select label="City" value={na.city} onChange={e=>setNa({...na,city:e.target.value})}>{allCities.map(c=><option key={c}>{c}</option>)}</Select></div><div style={{flex:1}}><Input label="Est. Cost (USD)" type="number" placeholder="—" value={na.cost} onChange={e=>setNa({...na,cost:e.target.value})}/></div></div>
       <Input label="Notes" placeholder="Tips, booking info..." value={na.notes} onChange={e=>setNa({...na,notes:e.target.value})}/>
       <Btn primary full onClick={doAdd}>Save</Btn>
+    </Modal>
+    <Modal open={!!editAct} onClose={()=>setEditAct(null)} title="Edit Activity">
+      {editAct&&<><Input label="Activity Name" value={editAct.name} onChange={e=>setEditAct({...editAct,name:e.target.value})}/>
+      <div style={{display:"flex",gap:10}}><div style={{flex:1}}><Select label="City" value={editAct.city} onChange={e=>setEditAct({...editAct,city:e.target.value})}>{allCities.map(c=><option key={c}>{c}</option>)}</Select></div><div style={{flex:1}}><Input label="Est. Cost (USD)" type="number" value={editAct.cost||""} onChange={e=>setEditAct({...editAct,cost:e.target.value})}/></div></div>
+      <Input label="Notes" value={editAct.notes||""} onChange={e=>setEditAct({...editAct,notes:e.target.value})}/>
+      <Btn primary full onClick={doEditAct}>Save Changes</Btn></>}
+    </Modal>
+    <Modal open={!!addToDay} onClose={()=>setAddToDay(null)} title={addToDay?"Add \""+addToDay.name+"\" to Itinerary":""}>
+      {addToDay&&<><p style={{fontSize:13.5,color:"#605C55",marginBottom:14}}>Which day should this be added to?</p>
+      <div style={{maxHeight:300,overflowY:"auto"}}>{data.itinerary.map((day,i)=>{const[bg2,fg2]=getCityColor(day.city);return(<div key={i} onClick={()=>doAddToItinerary(i)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",border:"1px solid #DDD9D2",borderRadius:12,marginBottom:8,cursor:"pointer",background:"#fff"}}>
+        <div style={{width:36,height:36,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,fontFamily:"'Fraunces',serif",background:bg2,color:fg2}}>{day.day}</div>
+        <div><div style={{fontSize:13.5,fontWeight:600}}>{day.date}</div><div style={{fontSize:12,color:"#9A958D"}}>{day.city} · {day.activities.length} plans</div></div>
+      </div>)})}</div></>}
     </Modal>
   </div>);
 }
@@ -407,6 +477,99 @@ function PhotosTab({data,save}){
 }
 
 // ── TRANSPORT ──
+// ── CALENDAR ──
+function CalendarTab({data,setTab:switchTab,setSub}){
+  const today=new Date();today.setHours(0,0,0,0);
+  const tripStart=data.startDate?new Date(data.startDate+"T00:00:00"):null;
+  const tripEnd=data.endDate?new Date(data.endDate+"T00:00:00"):null;
+  const startMonth=tripStart?new Date(tripStart.getFullYear(),tripStart.getMonth(),1):new Date(today.getFullYear(),today.getMonth(),1);
+  const[viewMonth,setViewMonth]=useState(startMonth);
+
+  // Build lookup: isoDate -> {day, activities, city}
+  const dayLookup={};data.itinerary.forEach(d=>{if(d.isoDate)dayLookup[d.isoDate]=d});
+
+  const yr=viewMonth.getFullYear();const mo=viewMonth.getMonth();
+  const firstDay=new Date(yr,mo,1).getDay();
+  const daysInMonth=new Date(yr,mo+1,0).getDate();
+  const monthLabel=viewMonth.toLocaleDateString("en-US",{month:"long",year:"numeric"});
+  const prevMonth=()=>setViewMonth(new Date(yr,mo-1,1));
+  const nextMonth=()=>setViewMonth(new Date(yr,mo+1,1));
+  const cells=[];
+  for(let i=0;i<firstDay;i++)cells.push(null);
+  for(let d=1;d<=daysInMonth;d++)cells.push(d);
+
+  const[selDate,setSelDate]=useState(null);
+  const selDay=selDate?dayLookup[selDate]:null;
+  const fmtTime2=(t)=>{if(!t)return"";const p=t.split(":");const h=parseInt(p[0]);return(h===0?12:h>12?h-12:h)+":"+p[1]+" "+(h>=12?"PM":"AM")};
+
+  const goToDay=(dayNum)=>{
+    const idx=data.itinerary.findIndex(d=>d.day===dayNum);
+    if(idx>=0){switchTab("itinerary");setSub&&setSub(null)}
+  };
+
+  return(<div style={{padding:"12px 20px"}}>
+    <div style={{fontFamily:"'Fraunces',serif",fontSize:20,fontWeight:700,marginBottom:16}}>Calendar</div>
+    {/* Month navigation */}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+      <button onClick={prevMonth} style={{background:"#EDEBE6",border:"none",borderRadius:10,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#605C55",fontSize:18}}>‹</button>
+      <div style={{fontSize:16,fontWeight:600,fontFamily:"'Fraunces',serif"}}>{monthLabel}</div>
+      <button onClick={nextMonth} style={{background:"#EDEBE6",border:"none",borderRadius:10,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#605C55",fontSize:18}}>›</button>
+    </div>
+    {/* Day labels */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>
+      {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d=><div key={d} style={{textAlign:"center",fontSize:11,fontWeight:600,color:"#9A958D",padding:"6px 0"}}>{d}</div>)}
+    </div>
+    {/* Calendar grid */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:16}}>
+      {cells.map((day,i)=>{
+        if(!day)return<div key={i}/>;
+        const iso=`${yr}-${String(mo+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+        const tripDay=dayLookup[iso];
+        const isT=new Date(iso+"T00:00:00").getTime()===today.getTime();
+        const isTripDay=!!tripDay;
+        const actCount=tripDay?tripDay.activities.length:0;
+        const[bg,fg]=tripDay?getCityColor(tripDay.city):["transparent","#17150F"];
+        const isSelected=selDate===iso;
+        return(<div key={i} onClick={()=>setSelDate(iso===selDate?null:iso)} style={{
+          textAlign:"center",padding:"8px 2px",borderRadius:12,cursor:isTripDay?"pointer":"default",
+          background:isSelected?"#17150F":isTripDay?bg:"transparent",
+          color:isSelected?"#fff":isTripDay?fg:"#9A958D",
+          border:isT?"2px solid #C84B31":"2px solid transparent",
+          position:"relative",transition:"all .15s",
+        }}>
+          <div style={{fontSize:14,fontWeight:isTripDay?700:400}}>{day}</div>
+          {actCount>0&&<div style={{display:"flex",justifyContent:"center",gap:2,marginTop:3}}>
+            {Array.from({length:Math.min(actCount,4)}).map((_,j)=><div key={j} style={{width:4,height:4,borderRadius:2,background:isSelected?"rgba(255,255,255,.6)":fg}}/>)}
+          </div>}
+          {isTripDay&&!actCount&&<div style={{height:4,marginTop:3}}/>}
+        </div>);
+      })}
+    </div>
+    {/* Legend */}
+    <div style={{display:"flex",gap:12,justifyContent:"center",marginBottom:16}}>
+      {[...new Set(data.itinerary.map(d=>d.city).filter(c=>c&&c!=="TBD"))].map(c=>{const[bg2,fg2]=getCityColor(c);return<div key={c} style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:"#605C55"}}><div style={{width:10,height:10,borderRadius:3,background:bg2,border:`1px solid ${fg2}33`}}/>{c}</div>})}
+      <div style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:"#605C55"}}><div style={{width:10,height:10,borderRadius:5,border:"2px solid #C84B31"}}/> Today</div>
+    </div>
+    {/* Selected day detail */}
+    {selDate&&<div style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:16,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}>
+      {selDay?(<>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div><div style={{fontFamily:"'Fraunces',serif",fontSize:17,fontWeight:700}}>Day {selDay.day} — {selDay.date}</div><div style={{display:"flex",alignItems:"center",gap:4,fontSize:12.5,color:"#9A958D",marginTop:2}}><Chip city={selDay.city}/></div></div>
+          <Btn ghost sm onClick={()=>goToDay(selDay.day)}>View →</Btn>
+        </div>
+        {selDay.activities.length>0?selDay.activities.sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(a=>(
+          <div key={a.id} style={{display:"flex",gap:10,padding:"8px 0",borderTop:"1px solid #ECEAE5"}}>
+            <div style={{fontSize:11.5,fontWeight:600,color:"#9A958D",minWidth:52}}>{a.time?fmtTime2(a.time):"—"}</div>
+            <div style={{fontSize:13.5}}>{a.text}</div>
+          </div>
+        )):<div style={{fontSize:13,color:"#9A958D"}}>No plans yet for this day.</div>}
+      </>):(<div style={{textAlign:"center",color:"#9A958D",fontSize:13.5,padding:8}}>
+        {new Date(selDate+"T00:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})} — not a trip day
+      </div>)}
+    </div>}
+  </div>);
+}
+
 function TransportTab(){
   const tips=[{t:"🚄 Shinkansen",d:"Tokyo → Osaka ~2.5hrs on Nozomi. Reserve seats in advance."},{t:"🚇 IC Cards (Suica/ICOCA)",d:"Get Suica at airport or JR station. Works on trains, buses, konbini."},{t:"📱 Google Maps",d:"Best transit nav for Japan. Download offline maps as backup."},{t:"🚕 Taxis",d:"Clean, safe, expensive. Doors open automatically!"},{t:"🚶 Walking",d:"Expect 15,000–25,000 steps/day. Comfy shoes are essential."}];
   return(<div style={{padding:"12px 20px"}}><div style={{fontFamily:"'Fraunces',serif",fontSize:20,fontWeight:700,marginBottom:16}}>Getting Around</div>{tips.map((tip,i)=>(<div key={i} style={{background:"#fff",border:"1px solid #DDD9D2",borderRadius:16,padding:16,marginBottom:10,boxShadow:"0 1px 3px rgba(0,0,0,.04)"}}><div style={{fontWeight:600,fontSize:14,marginBottom:5}}>{tip.t}</div><p style={{fontSize:13,color:"#605C55",lineHeight:1.6}}>{tip.d}</p></div>))}</div>);
@@ -561,6 +724,7 @@ export default function App(){
   const render=()=>{
     switch(active){
       case"itinerary":return<ItineraryTab data={data} save={save}/>;
+      case"calendar":return<CalendarTab data={data} setTab={setTab} setSub={setSub}/>;
       case"budget":return<BudgetTab data={data} save={save}/>;
       case"food":return<FoodTab data={data} save={save}/>;
       case"hotels":return<HotelsTab data={data} save={save}/>;
@@ -575,7 +739,7 @@ export default function App(){
     }
   };
 
-  const navItems=[{id:"itinerary",label:"Days",icon:navSvg.days},{id:"budget",label:"Budget",icon:navSvg.budget},{id:"food",label:"Food",icon:navSvg.food},{id:"more",label:"More",icon:navSvg.more}];
+  const navItems=[{id:"itinerary",label:"Days",icon:navSvg.days},{id:"calendar",label:"Calendar",icon:<svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" strokeWidth="2"/></svg>},{id:"budget",label:"Budget",icon:navSvg.budget},{id:"food",label:"Food",icon:navSvg.food},{id:"more",label:"More",icon:navSvg.more}];
 
   return(<>
     <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&display=swap');*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}body,html{font-family:'DM Sans',-apple-system,sans-serif;background:#F5F4F0;color:#17150F;font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow-x:hidden}`}</style>
